@@ -6,10 +6,11 @@ const els = {
   openFileButton: document.querySelector("#openFileButton"),
   demoButton: document.querySelector("#demoButton"),
   undoButton: document.querySelector("#undoButton"),
-  exportCsvButton: document.querySelector("#exportCsvButton"),
-  exportMeasurementsButton: document.querySelector("#exportMeasurementsButton"),
-  exportHistogramButton: document.querySelector("#exportHistogramButton"),
-  exportJsonButton: document.querySelector("#exportJsonButton"),
+  exportExcelButton: document.querySelector("#exportExcelButton"),
+  exportBandsOption: document.querySelector("#exportBandsOption"),
+  exportRoisOption: document.querySelector("#exportRoisOption"),
+  exportHistogramOption: document.querySelector("#exportHistogramOption"),
+  exportMeasurementsOption: document.querySelector("#exportMeasurementsOption"),
   imageMeta: document.querySelector("#imageMeta"),
   emptyState: document.querySelector("#emptyState"),
   imageList: document.querySelector("#imageList"),
@@ -48,8 +49,12 @@ const i18n = {
   pt: {
     openImage: "Abrir imagem",
     undo: "Desfazer",
-    histogramCsv: "Histograma CSV",
-    measurementsCsv: "Medidas CSV",
+    exportExcel: "Excel",
+    exportOptions: "Exportar",
+    exportBands: "Bandas EI",
+    exportRois: "ROIs",
+    exportHistogram: "Histograma 0-255",
+    exportMeasurements: "Medidas",
     images: "Imagens",
     noImages: "Sem imagens",
     navigation: "Navegação",
@@ -91,8 +96,12 @@ const i18n = {
   en: {
     openImage: "Open image",
     undo: "Undo",
-    histogramCsv: "Histogram CSV",
-    measurementsCsv: "Measurements CSV",
+    exportExcel: "Excel",
+    exportOptions: "Export",
+    exportBands: "EI bands",
+    exportRois: "ROIs",
+    exportHistogram: "Histogram 0-255",
+    exportMeasurements: "Measurements",
     images: "Images",
     noImages: "No images",
     navigation: "Navigation",
@@ -134,8 +143,12 @@ const i18n = {
   es: {
     openImage: "Abrir imagen",
     undo: "Deshacer",
-    histogramCsv: "Histograma CSV",
-    measurementsCsv: "Medidas CSV",
+    exportExcel: "Excel",
+    exportOptions: "Exportar",
+    exportBands: "Bandas EI",
+    exportRois: "ROIs",
+    exportHistogram: "Histograma 0-255",
+    exportMeasurements: "Medidas",
     images: "Imágenes",
     noImages: "Sin imágenes",
     navigation: "Navegación",
@@ -1136,6 +1149,17 @@ function isMeasureTool(tool) {
   return ["measure-distance", "measure-rect", "measure-circle", "measure-ellipse", "measure-freehand", "measure-angle"].includes(tool);
 }
 
+function hasExcelExportData() {
+  const hasRois = allRois().length > 0;
+  const hasMeasures = allMeasurements().length > 0;
+  return (
+    (els.exportBandsOption.checked && hasRois) ||
+    (els.exportRoisOption.checked && hasRois) ||
+    (els.exportHistogramOption.checked && hasRois) ||
+    (els.exportMeasurementsOption.checked && hasMeasures)
+  );
+}
+
 function isEditableShape(kind, shape) {
   if (kind === "roi") return ["rect", "circle", "ellipse"].includes(shape.type);
   return ["area-rect", "area-circle", "area-ellipse"].includes(shape.type);
@@ -1288,10 +1312,7 @@ function updateUi() {
   els.imageMeta.textContent = state.image
     ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)`
     : `${t("noImageLoaded")} · GUST`;
-  els.exportCsvButton.disabled = !allRois().length;
-  els.exportMeasurementsButton.disabled = !allMeasurements().length;
-  els.exportHistogramButton.disabled = !allRois().length;
-  els.exportJsonButton.disabled = !allRois().length;
+  els.exportExcelButton.disabled = !hasExcelExportData();
   els.deleteRoiButton.disabled = !selectedRoi();
   els.deleteMeasureButton.disabled = !selectedMeasurement();
   updateUndoButton();
@@ -1659,6 +1680,285 @@ function exportJson() {
   downloadText(`${baseFileName()}_ei.json`, JSON.stringify(payload, null, 2), "application/json");
 }
 
+function exportExcel() {
+  const sheets = [];
+  if (els.exportBandsOption.checked && allRois().length) sheets.push({ name: "Bandas EI", rows: buildEiBandsRows() });
+  if (els.exportRoisOption.checked && allRois().length) sheets.push({ name: "ROIs", rows: buildRoiRows() });
+  if (els.exportHistogramOption.checked && allRois().length) sheets.push({ name: "Histograma", rows: buildHistogramRows() });
+  if (els.exportMeasurementsOption.checked && allMeasurements().length) sheets.push({ name: "Medidas", rows: buildMeasurementRows() });
+  if (!sheets.length) return;
+  const blob = buildXlsx(sheets);
+  downloadBlob(`${baseFileName()}_GUST.xlsx`, blob);
+}
+
+function buildEiBandsRows() {
+  const rows = [];
+  const bands = bandsForMode(state.bandMode);
+  const roiItems = allRois();
+  const patientAnalysis = aggregateHistogramAnalysis(roiItems.map(({ roi }) => roi.analysis).filter(Boolean));
+  if (patientAnalysis.total) {
+    rows.push(["Paciente"]);
+    appendEiBandTable(rows, patientAnalysis, bands);
+    rows.push([]);
+  }
+  roiItems.forEach(({ image, roi }, index) => {
+    const analysis = roi.analysis;
+    if (!analysis) return;
+    rows.push([index + 1]);
+    rows.push(["Imagem", image.name]);
+    rows.push(["ROI", roi.label]);
+    rows.push(["Tipo", roi.type]);
+    appendEiBandTable(rows, analysis, bands);
+    rows.push([]);
+  });
+  return rows;
+}
+
+function appendEiBandTable(rows, analysis, bands) {
+  const pixelsByBand = bands.map((band) => bandPixelCount(analysis.hist, band));
+  rows.push(["Total", ...bands.map((band) => `${band.start}-${band.end}`)]);
+  rows.push([analysis.total, ...pixelsByBand]);
+  rows.push(["%", ...pixelsByBand.map((pixels) => (analysis.total ? roundForSheet((pixels / analysis.total) * 100, 2) : 0))]);
+}
+
+function bandPixelCount(hist, band) {
+  let pixels = 0;
+  for (let value = band.start; value <= band.end; value += 1) pixels += hist[value] || 0;
+  return pixels;
+}
+
+function aggregateHistogramAnalysis(analyses) {
+  const hist = Array(256).fill(0);
+  let total = 0;
+  analyses.forEach((analysis) => {
+    if (!analysis?.total) return;
+    total += analysis.total;
+    for (let value = 0; value <= 255; value += 1) hist[value] += analysis.hist[value] || 0;
+  });
+  return { hist, total };
+}
+
+function buildRoiRows() {
+  const rows = [["image", "image_source", "roi", "type", "total_pixels", "mean_ei", "median_ei", "sd_ei", "min_ei", "max_ei"]];
+  allRois().forEach(({ image, roi }) => {
+    rows.push([
+      image.name,
+      image.source,
+      roi.label,
+      roi.type,
+      roi.analysis.total,
+      roundForSheet(roi.analysis.mean, 4),
+      roi.analysis.median,
+      roundForSheet(roi.analysis.sd, 4),
+      roi.analysis.min,
+      roi.analysis.max,
+    ]);
+  });
+  return rows;
+}
+
+function buildHistogramRows() {
+  const rows = [["image", "image_source", "roi", "type", "total_pixels", "pixel_value", "pixel_count", "pixel_percent"]];
+  allRois().forEach(({ image, roi }) => {
+    const total = roi.analysis?.total || 0;
+    const hist = roi.analysis?.hist || [];
+    for (let pixelValue = 0; pixelValue <= 255; pixelValue += 1) {
+      const count = hist[pixelValue] || 0;
+      rows.push([
+        image.name,
+        image.source,
+        roi.label,
+        roi.type,
+        total,
+        pixelValue,
+        count,
+        total ? roundForSheet((count / total) * 100, 6) : 0,
+      ]);
+    }
+  });
+  return rows;
+}
+
+function buildMeasurementRows() {
+  const rows = [["image", "image_source", "measurement", "type", "base_value_px_or_px2", "display_value", "display_unit", "pixel_spacing_mm"]];
+  allMeasurements().forEach(({ image, measurement }) => {
+    const display = measurementDisplay(measurement);
+    rows.push([
+      image.name,
+      image.source,
+      measurement.label,
+      measurement.type,
+      roundForSheet(measurementBaseValue(measurement), 6),
+      roundForSheet(display.value, 6),
+      display.unit,
+      state.pixelSpacingMm,
+    ]);
+  });
+  return rows;
+}
+
+function roundForSheet(value, digits) {
+  if (!Number.isFinite(value)) return "";
+  return Number(value.toFixed(digits));
+}
+
+function buildXlsx(sheets) {
+  const files = [];
+  files.push({
+    path: "[Content_Types].xml",
+    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+${sheets.map((_, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}
+</Types>`,
+  });
+  files.push({
+    path: "_rels/.rels",
+    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`,
+  });
+  files.push({
+    path: "xl/workbook.xml",
+    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets>${sheets.map((sheet, index) => `<sheet name="${xmlEscape(sheet.name).slice(0, 31)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("")}</sheets>
+</workbook>`,
+  });
+  files.push({
+    path: "xl/_rels/workbook.xml.rels",
+    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheets.map((_, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join("")}
+</Relationships>`,
+  });
+  sheets.forEach((sheet, index) => {
+    files.push({ path: `xl/worksheets/sheet${index + 1}.xml`, content: sheetXml(sheet.rows) });
+  });
+  return zipFiles(files);
+}
+
+function sheetXml(rows) {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>
+${rows
+  .map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((cell, colIndex) => cellXml(cell, rowIndex + 1, colIndex)).join("")}</row>`)
+  .join("")}
+</sheetData>
+</worksheet>`;
+}
+
+function cellXml(value, rowIndex, colIndex) {
+  if (value === null || value === undefined || value === "") return "";
+  const ref = `${columnName(colIndex + 1)}${rowIndex}`;
+  if (typeof value === "number" && Number.isFinite(value)) return `<c r="${ref}"><v>${value}</v></c>`;
+  return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(String(value))}</t></is></c>`;
+}
+
+function columnName(number) {
+  let name = "";
+  while (number > 0) {
+    const remainder = (number - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    number = Math.floor((number - 1) / 26);
+  }
+  return name;
+}
+
+function xmlEscape(value) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+function zipFiles(files) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  files.forEach((file) => {
+    const name = encoder.encode(file.path);
+    const data = encoder.encode(file.content);
+    const crc = crc32(data);
+    const local = zipLocalHeader(name, data, crc);
+    chunks.push(local, data);
+    central.push(zipCentralHeader(name, data, crc, offset));
+    offset += local.length + data.length;
+  });
+  const centralStart = offset;
+  central.forEach((entry) => {
+    chunks.push(entry);
+    offset += entry.length;
+  });
+  chunks.push(zipEndRecord(files.length, offset - centralStart, centralStart));
+  return new Blob(chunks, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+
+function zipLocalHeader(name, data, crc) {
+  const header = new Uint8Array(30 + name.length);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, 0x04034b50, true);
+  view.setUint16(4, 20, true);
+  view.setUint16(6, 0, true);
+  view.setUint16(8, 0, true);
+  view.setUint32(10, dosDateTime(), true);
+  view.setUint32(14, crc, true);
+  view.setUint32(18, data.length, true);
+  view.setUint32(22, data.length, true);
+  view.setUint16(26, name.length, true);
+  header.set(name, 30);
+  return header;
+}
+
+function zipCentralHeader(name, data, crc, localOffset) {
+  const header = new Uint8Array(46 + name.length);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, 0x02014b50, true);
+  view.setUint16(4, 20, true);
+  view.setUint16(6, 20, true);
+  view.setUint32(12, dosDateTime(), true);
+  view.setUint32(16, crc, true);
+  view.setUint32(20, data.length, true);
+  view.setUint32(24, data.length, true);
+  view.setUint16(28, name.length, true);
+  view.setUint32(42, localOffset, true);
+  header.set(name, 46);
+  return header;
+}
+
+function zipEndRecord(total, centralSize, centralOffset) {
+  const header = new Uint8Array(22);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, 0x06054b50, true);
+  view.setUint16(8, total, true);
+  view.setUint16(10, total, true);
+  view.setUint32(12, centralSize, true);
+  view.setUint32(16, centralOffset, true);
+  return header;
+}
+
+function dosDateTime() {
+  const date = new Date();
+  const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const day = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  return (day << 16) | time;
+}
+
+function crc32(data) {
+  if (!crc32.table) {
+    crc32.table = Array.from({ length: 256 }, (_, index) => {
+      let crc = index;
+      for (let bit = 0; bit < 8; bit += 1) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+      return crc >>> 0;
+    });
+  }
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i += 1) crc = crc32.table[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 function csvCell(value) {
   const text = String(value ?? "");
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
@@ -1670,6 +1970,10 @@ function baseFileName() {
 
 function downloadText(filename, text, type) {
   const blob = new Blob([text], { type });
+  downloadBlob(filename, blob);
+}
+
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -1772,10 +2076,10 @@ els.deleteMeasureButton.addEventListener("click", () => {
 });
 
 els.undoButton.addEventListener("click", undoLast);
-els.exportCsvButton.addEventListener("click", exportCsv);
-els.exportMeasurementsButton.addEventListener("click", exportMeasurementsCsv);
-els.exportHistogramButton.addEventListener("click", exportHistogramCsv);
-els.exportJsonButton.addEventListener("click", exportJson);
+els.exportExcelButton.addEventListener("click", exportExcel);
+[els.exportBandsOption, els.exportRoisOption, els.exportHistogramOption, els.exportMeasurementsOption].forEach((input) => {
+  input.addEventListener("change", updateUi);
+});
 
 els.viewer.addEventListener("pointerdown", (event) => {
   if (!state.image) return;

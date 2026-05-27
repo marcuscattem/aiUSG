@@ -29,10 +29,7 @@
           </button>
           <button id="demoButton" type="button" title="Carregar demo">Demo</button>
           <button id="undoButton" type="button" title="Desfazer" disabled data-i18n="undo">Desfazer</button>
-          <button id="exportCsvButton" type="button" title="Exportar CSV" disabled>CSV</button>
-          <button id="exportMeasurementsButton" type="button" title="Exportar medidas" disabled data-i18n="measurementsCsv">Medidas CSV</button>
-          <button id="exportHistogramButton" type="button" title="Exportar histograma 0-255" disabled data-i18n="histogramCsv">Histograma CSV</button>
-          <button id="exportJsonButton" type="button" title="Exportar JSON" disabled>JSON</button>
+          <button id="exportExcelButton" type="button" title="Exportar Excel" disabled data-i18n="exportExcel">Excel</button>
         </div>
       </header>
 
@@ -121,6 +118,26 @@
               <button class="segment" data-band-mode="25" type="button">25</button>
             </div>
             <div id="bandLegend" class="band-legend"></div>
+          </section>
+
+          <section class="panel-section">
+            <h2 data-i18n="exportOptions">Exportar</h2>
+            <label class="check-row">
+              <input id="exportBandsOption" type="checkbox" checked />
+              <span data-i18n="exportBands">Bandas EI</span>
+            </label>
+            <label class="check-row">
+              <input id="exportRoisOption" type="checkbox" checked />
+              <span data-i18n="exportRois">ROIs</span>
+            </label>
+            <label class="check-row">
+              <input id="exportHistogramOption" type="checkbox" checked />
+              <span data-i18n="exportHistogram">Histograma 0-255</span>
+            </label>
+            <label class="check-row">
+              <input id="exportMeasurementsOption" type="checkbox" checked />
+              <span data-i18n="exportMeasurements">Medidas</span>
+            </label>
           </section>
 
           <section class="panel-section">
