@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>aiUSG EI</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">US</div>
+          <div>
+            <h1>aiUSG EI</h1>
+            <p id="imageMeta">Nenhuma imagem carregada</p>
+          </div>
+        </div>
+        <div class="top-actions">
+          <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,.dcm,.dicom,application/dicom" multiple hidden />
+          <button id="openFileButton" class="primary-button" type="button" title="Abrir imagem">
+            <span aria-hidden="true">+</span>
+            Abrir imagem
+          </button>
+          <button id="demoButton" type="button" title="Carregar demo">Demo</button>
+          <button id="exportCsvButton" type="button" title="Exportar CSV" disabled>CSV</button>
+          <button id="exportJsonButton" type="button" title="Exportar JSON" disabled>JSON</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="left-panel">
+          <section class="panel-section">
+            <h2>Imagens</h2>
+            <div id="imageList" class="image-list empty">Sem imagens</div>
+          </section>
+
+          <section class="panel-section">
+            <h2>Ferramentas</h2>
+            <div class="tool-grid" role="group" aria-label="Ferramentas de ROI">
+              <button class="tool-button active" data-tool="pan" type="button" title="Mover imagem">
+                <span aria-hidden="true">↕</span>
+              </button>
+              <button class="tool-button" data-tool="rect" type="button" title="Retângulo">
+                <span aria-hidden="true">▭</span>
+              </button>
+              <button class="tool-button" data-tool="circle" type="button" title="Círculo">
+                <span aria-hidden="true">○</span>
+              </button>
+              <button class="tool-button" data-tool="freehand" type="button" title="Mão livre">
+                <span aria-hidden="true">⌁</span>
+              </button>
+            </div>
+            <div class="field-row">
+              <label for="circleRadius">Raio px</label>
+              <input id="circleRadius" type="number" min="1" step="1" value="40" />
+            </div>
+            <label class="check-row">
+              <input id="fixedCircle" type="checkbox" />
+              <span>Círculo com raio fixo</span>
+            </label>
+          </section>
+
+          <section class="panel-section">
+            <h2>Bandas EI</h2>
+            <div class="segmented" role="group" aria-label="Bandas de ecointensidade">
+              <button class="segment active" data-band-mode="50" type="button">50</button>
+              <button class="segment" data-band-mode="25" type="button">25</button>
+            </div>
+            <div id="bandLegend" class="band-legend"></div>
+          </section>
+
+          <section class="panel-section">
+            <h2>ROIs</h2>
+            <div id="roiList" class="roi-list empty">Sem ROIs</div>
+            <button id="deleteRoiButton" type="button" disabled>Excluir ROI</button>
+          </section>
+        </aside>
+
+        <section class="viewer-wrap">
+          <canvas id="viewerCanvas"></canvas>
+          <div id="emptyState" class="empty-state">
+            <strong>Abra uma imagem de ultrassom</strong>
+            <span>PNG, JPEG, WebP, BMP ou DICOM não comprimido.</span>
+          </div>
+        </section>
+
+        <aside class="right-panel">
+          <section class="panel-section metrics">
+            <h2>Paciente</h2>
+            <dl>
+              <div>
+                <dt>Imagens</dt>
+                <dd id="metricImages">-</dd>
+              </div>
+              <div>
+                <dt>ROIs</dt>
+                <dd id="metricTotalRois">-</dd>
+              </div>
+              <div>
+                <dt>EI média</dt>
+                <dd id="metricPatientMean">-</dd>
+              </div>
+              <div>
+                <dt>Pixels</dt>
+                <dd id="metricPatientPixels">-</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="panel-section metrics">
+            <h2>Resultado</h2>
+            <dl>
+              <div>
+                <dt>ROI</dt>
+                <dd id="metricRoi">-</dd>
+              </div>
+              <div>
+                <dt>Pixels</dt>
+                <dd id="metricPixels">-</dd>
+              </div>
+              <div>
+                <dt>EI média</dt>
+                <dd id="metricMean">-</dd>
+              </div>
+              <div>
+                <dt>Mediana</dt>
+                <dd id="metricMedian">-</dd>
+              </div>
+              <div>
+                <dt>DP</dt>
+                <dd id="metricSd">-</dd>
+              </div>
+              <div>
+                <dt>Min/Max</dt>
+                <dd id="metricRange">-</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="panel-section">
+            <h2>Histograma</h2>
+            <canvas id="histogramCanvas" class="chart-canvas" width="520" height="220"></canvas>
+          </section>
+
+          <section class="panel-section">
+            <h2>Percentuais</h2>
+            <div id="bandBars" class="band-bars empty">Sem ROI selecionada</div>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
