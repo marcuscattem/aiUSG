@@ -49,6 +49,7 @@ const i18n = {
   pt: {
     openImage: "Abrir imagem",
     undo: "Desfazer",
+    selectEdit: "Selecionar, mover e editar",
     exportExcel: "Excel",
     exportOptions: "Exportar",
     exportBands: "Bandas EI",
@@ -96,6 +97,7 @@ const i18n = {
   en: {
     openImage: "Open image",
     undo: "Undo",
+    selectEdit: "Select, move, and edit",
     exportExcel: "Excel",
     exportOptions: "Export",
     exportBands: "EI bands",
@@ -143,6 +145,7 @@ const i18n = {
   es: {
     openImage: "Abrir imagen",
     undo: "Deshacer",
+    selectEdit: "Seleccionar, mover y editar",
     exportExcel: "Excel",
     exportOptions: "Exportar",
     exportBands: "Bandas EI",
@@ -416,16 +419,17 @@ function draw() {
   ctx.translate(state.view.x, state.view.y);
   ctx.scale(state.view.scale, state.view.scale);
   ctx.drawImage(state.image.canvas, 0, 0);
-  state.rois.forEach((roi) => {
-    const selected = roi.id === state.selectedId;
-    drawRoi(roi, selected);
-    if (selected && isEditableShape("roi", roi)) drawSelectionHandles("roi", roi);
-  });
+  state.rois.filter((roi) => roi.id !== state.selectedId).forEach((roi) => drawRoi(roi));
   state.measurements.forEach((measurement) => {
     const selected = measurement.id === state.selectedMeasureId;
     drawMeasurement(measurement, selected);
     if (selected && isEditableShape("measurement", measurement)) drawSelectionHandles("measurement", measurement);
   });
+  const roi = selectedRoi();
+  if (roi) {
+    drawRoi(roi, true);
+    if (isEditableShape("roi", roi)) drawSelectionHandles("roi", roi);
+  }
   if (state.drawing && state.drawing.roi) drawRoi(state.drawing.roi, true, true);
   if (state.drawing && state.drawing.measurement) drawMeasurement(state.drawing.measurement, true, true);
   if (state.angleDraft) drawAngleDraft();
@@ -452,7 +456,7 @@ function drawRoi(roi, selected = false, draft = false) {
   ctx.save();
   ctx.lineWidth = (draft ? 1 : selected ? 3 : 2) / state.view.scale;
   ctx.strokeStyle = roi.color;
-  ctx.fillStyle = `${roi.color}24`;
+  ctx.fillStyle = `${roi.color}${draft ? "18" : "00"}`;
   ctx.setLineDash(draft ? [3 / state.view.scale, 3 / state.view.scale] : []);
 
   ctx.beginPath();
@@ -471,7 +475,7 @@ function drawRoi(roi, selected = false, draft = false) {
     roi.points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
     ctx.closePath();
   }
-  ctx.fill();
+  if (draft) ctx.fill();
   ctx.stroke();
   ctx.restore();
 }
@@ -848,6 +852,7 @@ function updateAllAnalyses() {
 function analyzeRoi(roi, image = state.image) {
   if (!image || !image.gray) return null;
 
+  // Measurements always read the original grayscale buffer, never the overlay canvas.
   const { width, height, gray } = image;
   const hist = new Uint32Array(256);
   const bounds = boundsForRoi(roi, width, height);
@@ -1024,6 +1029,7 @@ function createMeasurement(type, geometry) {
 
 function finishRoi(roi) {
   if (!state.image || !roiHasArea(roi)) return;
+  clampShapeToImage(roi);
   pushUndo();
   roi.analysis = analyzeRoi(roi);
   state.rois.push(roi);
@@ -1035,6 +1041,7 @@ function finishRoi(roi) {
 
 function finishMeasurement(measurement) {
   if (!state.image || !measurementHasValue(measurement)) return;
+  clampShapeToImage(measurement);
   pushUndo();
   state.measurements.push(measurement);
   state.selectedMeasureId = measurement.id;
@@ -1071,6 +1078,14 @@ function selectedMeasurement() {
 
 function pointDistance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function clampPointToImage(point) {
+  if (!state.image) return point;
+  return {
+    x: clamp(point.x, 0, state.image.width),
+    y: clamp(point.y, 0, state.image.height),
+  };
 }
 
 function polygonArea(points) {
@@ -1274,20 +1289,23 @@ function moveShape(shape, dx, dy) {
     shape.cx += dx;
     shape.cy += dy;
   }
+  clampShapeToImage(shape);
 }
 
 function resizeShape(shape, handle, startPoint, currentPoint, original) {
+  const current = clampPointToImage(currentPoint);
   if (shape.type === "circle" || shape.type === "area-circle") {
-    shape.r = Math.max(1, Math.hypot(currentPoint.x - original.cx, currentPoint.y - original.cy));
+    shape.r = clamp(Math.hypot(current.x - original.cx, current.y - original.cy), 1, maxCircleRadius(original.cx, original.cy));
+    clampShapeToImage(shape);
     return;
   }
 
   const bounds = shapeBounds(null, original);
   const next = { x0: bounds.x0, y0: bounds.y0, x1: bounds.x1, y1: bounds.y1 };
-  if (handle.includes("w")) next.x0 = currentPoint.x;
-  if (handle.includes("e")) next.x1 = currentPoint.x;
-  if (handle.includes("n")) next.y0 = currentPoint.y;
-  if (handle.includes("s")) next.y1 = currentPoint.y;
+  if (handle.includes("w")) next.x0 = current.x;
+  if (handle.includes("e")) next.x1 = current.x;
+  if (handle.includes("n")) next.y0 = current.y;
+  if (handle.includes("s")) next.y1 = current.y;
   if (handle === "n" || handle === "s") {
     next.x0 = bounds.x0;
     next.x1 = bounds.x1;
@@ -1296,10 +1314,56 @@ function resizeShape(shape, handle, startPoint, currentPoint, original) {
     next.y0 = bounds.y0;
     next.y1 = bounds.y1;
   }
-  shape.x = next.x0;
-  shape.y = next.y0;
-  shape.w = Math.max(1, next.x1 - next.x0);
-  shape.h = Math.max(1, next.y1 - next.y0);
+  applyBoundedRectGeometry(shape, next);
+}
+
+function maxCircleRadius(cx, cy) {
+  if (!state.image) return Number.POSITIVE_INFINITY;
+  return Math.max(1, Math.min(cx, cy, state.image.width - cx, state.image.height - cy));
+}
+
+function applyBoundedRectGeometry(shape, bounds) {
+  const maxX = state.image?.width ?? Number.POSITIVE_INFINITY;
+  const maxY = state.image?.height ?? Number.POSITIVE_INFINITY;
+  let x0 = clamp(Math.min(bounds.x0, bounds.x1), 0, maxX);
+  let x1 = clamp(Math.max(bounds.x0, bounds.x1), 0, maxX);
+  let y0 = clamp(Math.min(bounds.y0, bounds.y1), 0, maxY);
+  let y1 = clamp(Math.max(bounds.y0, bounds.y1), 0, maxY);
+
+  if (x1 - x0 < 1) {
+    x1 = clamp(x0 + 1, 0, maxX);
+    x0 = clamp(x1 - 1, 0, maxX);
+  }
+  if (y1 - y0 < 1) {
+    y1 = clamp(y0 + 1, 0, maxY);
+    y0 = clamp(y1 - 1, 0, maxY);
+  }
+
+  shape.x = x0;
+  shape.y = y0;
+  shape.w = x1 - x0;
+  shape.h = y1 - y0;
+}
+
+function clampShapeToImage(shape) {
+  if (!state.image) return;
+  const maxX = state.image.width;
+  const maxY = state.image.height;
+  if (shape.type === "rect" || shape.type === "ellipse" || shape.type === "area-rect" || shape.type === "area-ellipse") {
+    const bounds = shapeBounds(null, shape);
+    const width = Math.min(bounds.w, maxX);
+    const height = Math.min(bounds.h, maxY);
+    const x0 = clamp(bounds.x0, 0, Math.max(0, maxX - width));
+    const y0 = clamp(bounds.y0, 0, Math.max(0, maxY - height));
+    shape.x = x0;
+    shape.y = y0;
+    shape.w = width;
+    shape.h = height;
+  } else if (shape.type === "circle" || shape.type === "area-circle") {
+    shape.r = Math.min(shape.r, Math.max(1, Math.min(maxX, maxY) / 2));
+    shape.cx = clamp(shape.cx, shape.r, maxX - shape.r);
+    shape.cy = clamp(shape.cy, shape.r, maxY - shape.r);
+  }
 }
 
 function refreshEditedShape(kind, shape) {
@@ -2122,8 +2186,9 @@ els.viewer.addEventListener("pointerdown", (event) => {
   }
 
   if (state.activeTool === "measure-angle") {
+    const boundedImage = clampPointToImage(image);
     if (!state.angleDraft) state.angleDraft = { points: [] };
-    state.angleDraft.points.push(image);
+    state.angleDraft.points.push(boundedImage);
     if (state.angleDraft.points.length === 3) {
       const measurement = createMeasurement("angle", {
         p1: state.angleDraft.points[0],
@@ -2139,46 +2204,47 @@ els.viewer.addEventListener("pointerdown", (event) => {
 
   if (state.activeTool === "pan") return;
 
+  const boundedImage = clampPointToImage(image);
   const color = roiColors[state.rois.length % roiColors.length];
   const measureColor = measureColors[state.measurements.length % measureColors.length];
   if (state.activeTool === "rect") {
     state.drawing = {
-      roi: createRoi("rect", { x: image.x, y: image.y, w: 0, h: 0, color }),
+      roi: createRoi("rect", { x: boundedImage.x, y: boundedImage.y, w: 0, h: 0, color }),
     };
   } else if (state.activeTool === "circle") {
     const fixed = els.fixedCircle.checked;
     const radius = Math.max(1, Number(els.circleRadius.value) || 1);
     state.drawing = {
       fixed,
-      roi: createRoi("circle", { cx: image.x, cy: image.y, r: fixed ? radius : 0, color }),
+      roi: createRoi("circle", { cx: boundedImage.x, cy: boundedImage.y, r: fixed ? radius : 0, color }),
     };
   } else if (state.activeTool === "freehand") {
     state.drawing = {
-      roi: createRoi("freehand", { points: [image], color }),
+      roi: createRoi("freehand", { points: [boundedImage], color }),
     };
   } else if (state.activeTool === "ellipse") {
     state.drawing = {
-      roi: createRoi("ellipse", { x: image.x, y: image.y, w: 0, h: 0, color }),
+      roi: createRoi("ellipse", { x: boundedImage.x, y: boundedImage.y, w: 0, h: 0, color }),
     };
   } else if (state.activeTool === "measure-distance") {
     state.drawing = {
-      measurement: createMeasurement("distance", { p1: image, p2: image, color: measureColor }),
+      measurement: createMeasurement("distance", { p1: boundedImage, p2: boundedImage, color: measureColor }),
     };
   } else if (state.activeTool === "measure-rect") {
     state.drawing = {
-      measurement: createMeasurement("area-rect", { x: image.x, y: image.y, w: 0, h: 0, color: measureColor }),
+      measurement: createMeasurement("area-rect", { x: boundedImage.x, y: boundedImage.y, w: 0, h: 0, color: measureColor }),
     };
   } else if (state.activeTool === "measure-circle") {
     state.drawing = {
-      measurement: createMeasurement("area-circle", { cx: image.x, cy: image.y, r: 0, color: measureColor }),
+      measurement: createMeasurement("area-circle", { cx: boundedImage.x, cy: boundedImage.y, r: 0, color: measureColor }),
     };
   } else if (state.activeTool === "measure-ellipse") {
     state.drawing = {
-      measurement: createMeasurement("area-ellipse", { x: image.x, y: image.y, w: 0, h: 0, color: measureColor }),
+      measurement: createMeasurement("area-ellipse", { x: boundedImage.x, y: boundedImage.y, w: 0, h: 0, color: measureColor }),
     };
   } else if (state.activeTool === "measure-freehand") {
     state.drawing = {
-      measurement: createMeasurement("area-free", { points: [image], color: measureColor }),
+      measurement: createMeasurement("area-free", { points: [boundedImage], color: measureColor }),
     };
   }
   draw();
@@ -2225,28 +2291,29 @@ els.viewer.addEventListener("pointermove", (event) => {
   if (!state.drawing?.roi && !state.drawing?.measurement) return;
   const roi = state.drawing.roi;
   const measurement = state.drawing.measurement;
+  const boundedImage = clampPointToImage(image);
 
   if (roi?.type === "rect" || roi?.type === "ellipse") {
-    roi.w = image.x - roi.x;
-    roi.h = image.y - roi.y;
+    roi.w = boundedImage.x - roi.x;
+    roi.h = boundedImage.y - roi.y;
   } else if (roi?.type === "circle" && !state.drawing.fixed) {
-    roi.r = Math.hypot(image.x - roi.cx, image.y - roi.cy);
+    roi.r = Math.min(Math.hypot(boundedImage.x - roi.cx, boundedImage.y - roi.cy), maxCircleRadius(roi.cx, roi.cy));
   } else if (roi?.type === "freehand") {
     const last = roi.points.at(-1);
-    if (!last || Math.hypot(image.x - last.x, image.y - last.y) >= 1.5) {
-      roi.points.push(image);
+    if (!last || Math.hypot(boundedImage.x - last.x, boundedImage.y - last.y) >= 1.5) {
+      roi.points.push(boundedImage);
     }
   } else if (measurement?.type === "distance") {
-    measurement.p2 = image;
+    measurement.p2 = boundedImage;
   } else if (measurement?.type === "area-rect" || measurement?.type === "area-ellipse") {
-    measurement.w = image.x - measurement.x;
-    measurement.h = image.y - measurement.y;
+    measurement.w = boundedImage.x - measurement.x;
+    measurement.h = boundedImage.y - measurement.y;
   } else if (measurement?.type === "area-circle") {
-    measurement.r = Math.hypot(image.x - measurement.cx, image.y - measurement.cy);
+    measurement.r = Math.min(Math.hypot(boundedImage.x - measurement.cx, boundedImage.y - measurement.cy), maxCircleRadius(measurement.cx, measurement.cy));
   } else if (measurement?.type === "area-free") {
     const last = measurement.points.at(-1);
-    if (!last || Math.hypot(image.x - last.x, image.y - last.y) >= 1.5) {
-      measurement.points.push(image);
+    if (!last || Math.hypot(boundedImage.x - last.x, boundedImage.y - last.y) >= 1.5) {
+      measurement.points.push(boundedImage);
     }
   }
 
