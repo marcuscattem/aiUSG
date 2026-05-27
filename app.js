@@ -5,6 +5,7 @@ const els = {
   fileInput: document.querySelector("#fileInput"),
   openFileButton: document.querySelector("#openFileButton"),
   demoButton: document.querySelector("#demoButton"),
+  undoButton: document.querySelector("#undoButton"),
   exportCsvButton: document.querySelector("#exportCsvButton"),
   exportMeasurementsButton: document.querySelector("#exportMeasurementsButton"),
   exportHistogramButton: document.querySelector("#exportHistogramButton"),
@@ -46,6 +47,7 @@ const bandColors = ["#144b5a", "#0f766e", "#d97706", "#c2410c", "#7f1d1d", "#433
 const i18n = {
   pt: {
     openImage: "Abrir imagem",
+    undo: "Desfazer",
     histogramCsv: "Histograma CSV",
     measurementsCsv: "Medidas CSV",
     images: "Imagens",
@@ -88,6 +90,7 @@ const i18n = {
   },
   en: {
     openImage: "Open image",
+    undo: "Undo",
     histogramCsv: "Histogram CSV",
     measurementsCsv: "Measurements CSV",
     images: "Images",
@@ -130,6 +133,7 @@ const i18n = {
   },
   es: {
     openImage: "Abrir imagen",
+    undo: "Deshacer",
     histogramCsv: "Histograma CSV",
     measurementsCsv: "Medidas CSV",
     images: "Imágenes",
@@ -189,6 +193,8 @@ const state = {
   view: { scale: 1, x: 0, y: 0 },
   drawing: null,
   angleDraft: null,
+  editing: null,
+  undoStack: [],
   pointer: null,
 };
 
@@ -282,6 +288,68 @@ function allRois() {
   );
 }
 
+function clonePlain(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function snapshotState() {
+  return {
+    activeImageId: state.activeImageId,
+    selectedId: state.selectedId,
+    selectedMeasureId: state.selectedMeasureId,
+    images: state.images.map((image) => ({
+      id: image.id,
+      rois: clonePlain(image.rois),
+      measurements: clonePlain(image.measurements),
+      selectedId: image.selectedId,
+      selectedMeasureId: image.selectedMeasureId,
+    })),
+  };
+}
+
+function pushUndo() {
+  state.undoStack.push(snapshotState());
+  if (state.undoStack.length > 80) state.undoStack.shift();
+  updateUndoButton();
+}
+
+function restoreSnapshot(snapshot) {
+  const snapshotIds = new Set(snapshot.images.map((image) => image.id));
+  state.images = state.images.filter((image) => snapshotIds.has(image.id));
+  snapshot.images.forEach((saved) => {
+    const image = state.images.find((item) => item.id === saved.id);
+    if (!image) return;
+    image.rois = clonePlain(saved.rois);
+    image.measurements = clonePlain(saved.measurements);
+    image.selectedId = saved.selectedId;
+    image.selectedMeasureId = saved.selectedMeasureId;
+  });
+  state.activeImageId = snapshot.activeImageId;
+  syncActiveImage();
+  state.selectedId = snapshot.selectedId;
+  state.selectedMeasureId = snapshot.selectedMeasureId;
+  if (state.image) {
+    state.image.selectedId = state.selectedId;
+    state.image.selectedMeasureId = state.selectedMeasureId;
+  }
+  state.drawing = null;
+  state.editing = null;
+  state.angleDraft = null;
+  updateUi();
+  draw();
+}
+
+function undoLast() {
+  const snapshot = state.undoStack.pop();
+  if (!snapshot) return;
+  restoreSnapshot(snapshot);
+  updateUndoButton();
+}
+
+function updateUndoButton() {
+  if (els.undoButton) els.undoButton.disabled = state.undoStack.length === 0;
+}
+
 function resizeViewer() {
   const rect = els.viewer.parentElement.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
@@ -335,11 +403,35 @@ function draw() {
   ctx.translate(state.view.x, state.view.y);
   ctx.scale(state.view.scale, state.view.scale);
   ctx.drawImage(state.image.canvas, 0, 0);
-  state.rois.forEach((roi) => drawRoi(roi, roi.id === state.selectedId));
-  state.measurements.forEach((measurement) => drawMeasurement(measurement, measurement.id === state.selectedMeasureId));
+  state.rois.forEach((roi) => {
+    const selected = roi.id === state.selectedId;
+    drawRoi(roi, selected);
+    if (selected && isEditableShape("roi", roi)) drawSelectionHandles("roi", roi);
+  });
+  state.measurements.forEach((measurement) => {
+    const selected = measurement.id === state.selectedMeasureId;
+    drawMeasurement(measurement, selected);
+    if (selected && isEditableShape("measurement", measurement)) drawSelectionHandles("measurement", measurement);
+  });
   if (state.drawing && state.drawing.roi) drawRoi(state.drawing.roi, true, true);
   if (state.drawing && state.drawing.measurement) drawMeasurement(state.drawing.measurement, true, true);
   if (state.angleDraft) drawAngleDraft();
+  ctx.restore();
+}
+
+function drawSelectionHandles(kind, shape) {
+  const handles = shapeHandles(kind, shape);
+  const size = Math.max(5 / state.view.scale, 2.5);
+  ctx.save();
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 1.5 / state.view.scale;
+  handles.forEach((handle) => {
+    ctx.beginPath();
+    ctx.rect(handle.x - size, handle.y - size, size * 2, size * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
   ctx.restore();
 }
 
@@ -919,6 +1011,7 @@ function createMeasurement(type, geometry) {
 
 function finishRoi(roi) {
   if (!state.image || !roiHasArea(roi)) return;
+  pushUndo();
   roi.analysis = analyzeRoi(roi);
   state.rois.push(roi);
   state.selectedId = roi.id;
@@ -929,6 +1022,7 @@ function finishRoi(roi) {
 
 function finishMeasurement(measurement) {
   if (!state.image || !measurementHasValue(measurement)) return;
+  pushUndo();
   state.measurements.push(measurement);
   state.selectedMeasureId = measurement.id;
   state.image.selectedMeasureId = measurement.id;
@@ -1042,6 +1136,152 @@ function isMeasureTool(tool) {
   return ["measure-distance", "measure-rect", "measure-circle", "measure-ellipse", "measure-freehand", "measure-angle"].includes(tool);
 }
 
+function isEditableShape(kind, shape) {
+  if (kind === "roi") return ["rect", "circle", "ellipse"].includes(shape.type);
+  return ["area-rect", "area-circle", "area-ellipse"].includes(shape.type);
+}
+
+function shapeBounds(kind, shape) {
+  if (shape.type === "rect" || shape.type === "ellipse" || shape.type === "area-rect" || shape.type === "area-ellipse") {
+    const x0 = Math.min(shape.x, shape.x + shape.w);
+    const y0 = Math.min(shape.y, shape.y + shape.h);
+    const x1 = Math.max(shape.x, shape.x + shape.w);
+    const y1 = Math.max(shape.y, shape.y + shape.h);
+    return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
+  }
+  if (shape.type === "circle" || shape.type === "area-circle") {
+    return { x0: shape.cx - shape.r, y0: shape.cy - shape.r, x1: shape.cx + shape.r, y1: shape.cy + shape.r, cx: shape.cx, cy: shape.cy, w: shape.r * 2, h: shape.r * 2 };
+  }
+  return null;
+}
+
+function shapeHandles(kind, shape) {
+  const bounds = shapeBounds(kind, shape);
+  if (!bounds) return [];
+  return [
+    { name: "nw", x: bounds.x0, y: bounds.y0 },
+    { name: "n", x: bounds.cx, y: bounds.y0 },
+    { name: "ne", x: bounds.x1, y: bounds.y0 },
+    { name: "e", x: bounds.x1, y: bounds.cy },
+    { name: "se", x: bounds.x1, y: bounds.y1 },
+    { name: "s", x: bounds.cx, y: bounds.y1 },
+    { name: "sw", x: bounds.x0, y: bounds.y1 },
+    { name: "w", x: bounds.x0, y: bounds.cy },
+  ];
+}
+
+function hitSelectionHandle(point) {
+  const tolerance = Math.max(8 / state.view.scale, 3);
+  const candidates = selectedEditableShapes();
+  for (const candidate of candidates) {
+    const handles = shapeHandles(candidate.kind, candidate.shape);
+    for (const handle of handles) {
+      if (Math.abs(point.x - handle.x) <= tolerance && Math.abs(point.y - handle.y) <= tolerance) {
+        return { ...candidate, handle: handle.name };
+      }
+    }
+  }
+  return null;
+}
+
+function selectedEditableShapes() {
+  const shapes = [];
+  const roi = selectedRoi();
+  if (roi && isEditableShape("roi", roi)) shapes.push({ kind: "roi", shape: roi });
+  const measurement = selectedMeasurement();
+  if (measurement && isEditableShape("measurement", measurement)) shapes.push({ kind: "measurement", shape: measurement });
+  return shapes;
+}
+
+function hitEditableShape(point) {
+  const shapes = [
+    ...state.measurements.map((shape) => ({ kind: "measurement", shape })).reverse(),
+    ...state.rois.map((shape) => ({ kind: "roi", shape })).reverse(),
+  ];
+  return shapes.find((candidate) => isEditableShape(candidate.kind, candidate.shape) && containsEditableShape(candidate.kind, candidate.shape, point)) || null;
+}
+
+function containsEditableShape(kind, shape, point) {
+  if (kind === "roi") return containsPixel(shape, point.x, point.y);
+  if (shape.type === "area-rect") {
+    const x0 = Math.min(shape.x, shape.x + shape.w);
+    const x1 = Math.max(shape.x, shape.x + shape.w);
+    const y0 = Math.min(shape.y, shape.y + shape.h);
+    const y1 = Math.max(shape.y, shape.y + shape.h);
+    return point.x >= x0 && point.x <= x1 && point.y >= y0 && point.y <= y1;
+  }
+  if (shape.type === "area-circle") {
+    return (point.x - shape.cx) ** 2 + (point.y - shape.cy) ** 2 <= shape.r ** 2;
+  }
+  if (shape.type === "area-ellipse") {
+    const cx = shape.x + shape.w / 2;
+    const cy = shape.y + shape.h / 2;
+    const rx = Math.abs(shape.w / 2);
+    const ry = Math.abs(shape.h / 2);
+    if (!rx || !ry) return false;
+    return ((point.x - cx) / rx) ** 2 + ((point.y - cy) / ry) ** 2 <= 1;
+  }
+  return false;
+}
+
+function selectShape(kind, shape) {
+  if (kind === "roi") {
+    state.selectedId = shape.id;
+    state.selectedMeasureId = null;
+    if (state.image) {
+      state.image.selectedId = state.selectedId;
+      state.image.selectedMeasureId = null;
+    }
+  } else {
+    state.selectedMeasureId = shape.id;
+    state.selectedId = null;
+    if (state.image) {
+      state.image.selectedMeasureId = state.selectedMeasureId;
+      state.image.selectedId = null;
+    }
+  }
+}
+
+function moveShape(shape, dx, dy) {
+  if (shape.type === "rect" || shape.type === "ellipse" || shape.type === "area-rect" || shape.type === "area-ellipse") {
+    shape.x += dx;
+    shape.y += dy;
+  } else if (shape.type === "circle" || shape.type === "area-circle") {
+    shape.cx += dx;
+    shape.cy += dy;
+  }
+}
+
+function resizeShape(shape, handle, startPoint, currentPoint, original) {
+  if (shape.type === "circle" || shape.type === "area-circle") {
+    shape.r = Math.max(1, Math.hypot(currentPoint.x - original.cx, currentPoint.y - original.cy));
+    return;
+  }
+
+  const bounds = shapeBounds(null, original);
+  const next = { x0: bounds.x0, y0: bounds.y0, x1: bounds.x1, y1: bounds.y1 };
+  if (handle.includes("w")) next.x0 = currentPoint.x;
+  if (handle.includes("e")) next.x1 = currentPoint.x;
+  if (handle.includes("n")) next.y0 = currentPoint.y;
+  if (handle.includes("s")) next.y1 = currentPoint.y;
+  if (handle === "n" || handle === "s") {
+    next.x0 = bounds.x0;
+    next.x1 = bounds.x1;
+  }
+  if (handle === "e" || handle === "w") {
+    next.y0 = bounds.y0;
+    next.y1 = bounds.y1;
+  }
+  shape.x = next.x0;
+  shape.y = next.y0;
+  shape.w = Math.max(1, next.x1 - next.x0);
+  shape.h = Math.max(1, next.y1 - next.y0);
+}
+
+function refreshEditedShape(kind, shape) {
+  if (kind === "roi") shape.analysis = analyzeRoi(shape);
+}
+
 function updateUi() {
   applyTranslations();
   els.emptyState.classList.toggle("hidden", Boolean(state.image));
@@ -1054,6 +1294,7 @@ function updateUi() {
   els.exportJsonButton.disabled = !allRois().length;
   els.deleteRoiButton.disabled = !selectedRoi();
   els.deleteMeasureButton.disabled = !selectedMeasurement();
+  updateUndoButton();
   els.languageSelect.value = state.language;
   els.measureUnit.value = state.measureUnit;
   els.pixelSpacing.value = state.pixelSpacingMm;
@@ -1061,6 +1302,8 @@ function updateUi() {
   els.toolButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.tool === state.activeTool);
   });
+  els.viewer.classList.toggle("pan-mode", state.activeTool === "pan" && !state.editing);
+  els.viewer.classList.toggle("editing-mode", Boolean(state.editing));
   els.bandButtons.forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.bandMode) === state.bandMode);
   });
@@ -1482,6 +1725,11 @@ els.roiList.addEventListener("click", (event) => {
   const item = event.target.closest("[data-roi-id]");
   if (!item) return;
   state.selectedId = item.dataset.roiId;
+  state.selectedMeasureId = null;
+  if (state.image) {
+    state.image.selectedId = state.selectedId;
+    state.image.selectedMeasureId = null;
+  }
   updateUi();
   draw();
 });
@@ -1490,7 +1738,11 @@ els.measureList.addEventListener("click", (event) => {
   const item = event.target.closest("[data-measure-id]");
   if (!item) return;
   state.selectedMeasureId = item.dataset.measureId;
-  if (state.image) state.image.selectedMeasureId = state.selectedMeasureId;
+  state.selectedId = null;
+  if (state.image) {
+    state.image.selectedMeasureId = state.selectedMeasureId;
+    state.image.selectedId = null;
+  }
   updateUi();
   draw();
 });
@@ -1498,6 +1750,7 @@ els.measureList.addEventListener("click", (event) => {
 els.deleteRoiButton.addEventListener("click", () => {
   const roi = selectedRoi();
   if (!roi) return;
+  pushUndo();
   const index = state.rois.findIndex((item) => item.id === roi.id);
   if (index >= 0) state.rois.splice(index, 1);
   state.selectedId = state.rois.at(-1)?.id || null;
@@ -1509,6 +1762,7 @@ els.deleteRoiButton.addEventListener("click", () => {
 els.deleteMeasureButton.addEventListener("click", () => {
   const measurement = selectedMeasurement();
   if (!measurement) return;
+  pushUndo();
   const index = state.measurements.findIndex((item) => item.id === measurement.id);
   if (index >= 0) state.measurements.splice(index, 1);
   state.selectedMeasureId = state.measurements.at(-1)?.id || null;
@@ -1517,6 +1771,7 @@ els.deleteMeasureButton.addEventListener("click", () => {
   draw();
 });
 
+els.undoButton.addEventListener("click", undoLast);
 els.exportCsvButton.addEventListener("click", exportCsv);
 els.exportMeasurementsButton.addEventListener("click", exportMeasurementsCsv);
 els.exportHistogramButton.addEventListener("click", exportHistogramCsv);
@@ -1528,6 +1783,39 @@ els.viewer.addEventListener("pointerdown", (event) => {
   const screen = pointerPoint(event);
   const image = screenToImage(screen);
   state.pointer = { screen, image, view: { ...state.view } };
+
+  if (state.activeTool === "pan") {
+    const handleHit = hitSelectionHandle(image);
+    if (handleHit) {
+      pushUndo();
+      state.editing = {
+        kind: handleHit.kind,
+        id: handleHit.shape.id,
+        handle: handleHit.handle,
+        mode: "resize",
+        start: image,
+        previous: image,
+        original: clonePlain(handleHit.shape),
+      };
+      return;
+    }
+    const shapeHit = hitEditableShape(image);
+    if (shapeHit) {
+      selectShape(shapeHit.kind, shapeHit.shape);
+      pushUndo();
+      state.editing = {
+        kind: shapeHit.kind,
+        id: shapeHit.shape.id,
+        mode: "move",
+        start: image,
+        previous: image,
+        original: clonePlain(shapeHit.shape),
+      };
+      updateUi();
+      draw();
+      return;
+    }
+  }
 
   if (state.activeTool === "measure-angle") {
     if (!state.angleDraft) state.angleDraft = { points: [] };
@@ -1598,6 +1886,26 @@ els.viewer.addEventListener("pointermove", (event) => {
   const image = screenToImage(screen);
   state.pointer.image = image;
 
+  if (state.editing) {
+    const target =
+      state.editing.kind === "roi"
+        ? state.rois.find((roi) => roi.id === state.editing.id)
+        : state.measurements.find((measurement) => measurement.id === state.editing.id);
+    if (!target) return;
+    if (state.editing.mode === "move") {
+      const dx = image.x - state.editing.previous.x;
+      const dy = image.y - state.editing.previous.y;
+      moveShape(target, dx, dy);
+      state.editing.previous = image;
+    } else if (state.editing.mode === "resize") {
+      resizeShape(target, state.editing.handle, state.editing.start, image, state.editing.original);
+    }
+    refreshEditedShape(state.editing.kind, target);
+    updateUi();
+    draw();
+    return;
+  }
+
   if (state.activeTool === "pan" && !state.drawing) {
     state.view.x = state.pointer.view.x + screen.x - state.pointer.screen.x;
     state.view.y = state.pointer.view.y + screen.y - state.pointer.screen.y;
@@ -1645,6 +1953,19 @@ els.viewer.addEventListener("pointerup", (event) => {
   if (!state.pointer) return;
   els.viewer.releasePointerCapture(event.pointerId);
 
+  if (state.editing) {
+    const target =
+      state.editing.kind === "roi"
+        ? state.rois.find((roi) => roi.id === state.editing.id)
+        : state.measurements.find((measurement) => measurement.id === state.editing.id);
+    if (target) refreshEditedShape(state.editing.kind, target);
+    state.editing = null;
+    state.pointer = null;
+    updateUi();
+    draw();
+    return;
+  }
+
   if (state.drawing?.roi) {
     finishRoi(state.drawing.roi);
   }
@@ -1660,6 +1981,7 @@ els.viewer.addEventListener("pointerup", (event) => {
 els.viewer.addEventListener("pointercancel", () => {
   state.drawing = null;
   state.angleDraft = null;
+  state.editing = null;
   state.pointer = null;
   draw();
 });
@@ -1680,6 +2002,34 @@ els.viewer.addEventListener(
   },
   { passive: false },
 );
+
+window.addEventListener("keydown", (event) => {
+  if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    undoLast();
+    return;
+  }
+  if (event.key !== "Delete" && event.key !== "Backspace") return;
+  const roi = selectedRoi();
+  const measurement = selectedMeasurement();
+  if (!roi && !measurement) return;
+  event.preventDefault();
+  pushUndo();
+  if (roi) {
+    const index = state.rois.findIndex((item) => item.id === roi.id);
+    if (index >= 0) state.rois.splice(index, 1);
+    state.selectedId = state.rois.at(-1)?.id || null;
+    if (state.image) state.image.selectedId = state.selectedId;
+  } else if (measurement) {
+    const index = state.measurements.findIndex((item) => item.id === measurement.id);
+    if (index >= 0) state.measurements.splice(index, 1);
+    state.selectedMeasureId = state.measurements.at(-1)?.id || null;
+    if (state.image) state.image.selectedMeasureId = state.selectedMeasureId;
+  }
+  updateUi();
+  draw();
+});
 
 window.addEventListener("resize", resizeViewer);
 resizeViewer();

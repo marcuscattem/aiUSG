@@ -404,7 +404,16 @@ input[type="number"],
 #viewerCanvas {
   display: block;
   height: 100%;
+  cursor: crosshair;
   width: 100%;
+}
+
+#viewerCanvas.pan-mode {
+  cursor: grab;
+}
+
+#viewerCanvas.editing-mode {
+  cursor: grabbing;
 }
 
 .empty-state {
