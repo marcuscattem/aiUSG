@@ -5,6 +5,7 @@ const els = {
   openFileButton: document.querySelector("#openFileButton"),
   demoButton: document.querySelector("#demoButton"),
   exportCsvButton: document.querySelector("#exportCsvButton"),
+  exportHistogramButton: document.querySelector("#exportHistogramButton"),
   exportJsonButton: document.querySelector("#exportJsonButton"),
   imageMeta: document.querySelector("#imageMeta"),
   emptyState: document.querySelector("#emptyState"),
@@ -687,6 +688,7 @@ function updateUi() {
     ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)`
     : "Nenhuma imagem carregada";
   els.exportCsvButton.disabled = !allRois().length;
+  els.exportHistogramButton.disabled = !allRois().length;
   els.exportJsonButton.disabled = !allRois().length;
   els.deleteRoiButton.disabled = !selectedRoi();
 
@@ -916,6 +918,44 @@ function exportCsv() {
   );
 }
 
+function exportHistogramCsv() {
+  const header = [
+    "image",
+    "image_source",
+    "roi",
+    "type",
+    "total_pixels",
+    "pixel_value",
+    "pixel_count",
+    "pixel_percent",
+  ];
+  const rows = [header];
+
+  allRois().forEach(({ image, roi }) => {
+    const total = roi.analysis?.total || 0;
+    const hist = roi.analysis?.hist || [];
+    for (let pixelValue = 0; pixelValue <= 255; pixelValue += 1) {
+      const count = hist[pixelValue] || 0;
+      rows.push([
+        image.name,
+        image.source,
+        roi.label,
+        roi.type,
+        total,
+        pixelValue,
+        count,
+        total ? ((count / total) * 100).toFixed(6) : "0.000000",
+      ]);
+    }
+  });
+
+  downloadText(
+    `${baseFileName()}_histograma_0_255.csv`,
+    rows.map((row) => row.map(csvCell).join(",")).join("\n"),
+    "text/csv;charset=utf-8",
+  );
+}
+
 function exportJson() {
   const payload = {
     images: state.images.map((image) => ({
@@ -1002,6 +1042,7 @@ els.deleteRoiButton.addEventListener("click", () => {
 });
 
 els.exportCsvButton.addEventListener("click", exportCsv);
+els.exportHistogramButton.addEventListener("click", exportHistogramCsv);
 els.exportJsonButton.addEventListener("click", exportJson);
 
 els.viewer.addEventListener("pointerdown", (event) => {
