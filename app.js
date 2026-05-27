@@ -1,10 +1,12 @@
 const els = {
   viewer: document.querySelector("#viewerCanvas"),
   hist: document.querySelector("#histogramCanvas"),
+  languageSelect: document.querySelector("#languageSelect"),
   fileInput: document.querySelector("#fileInput"),
   openFileButton: document.querySelector("#openFileButton"),
   demoButton: document.querySelector("#demoButton"),
   exportCsvButton: document.querySelector("#exportCsvButton"),
+  exportMeasurementsButton: document.querySelector("#exportMeasurementsButton"),
   exportHistogramButton: document.querySelector("#exportHistogramButton"),
   exportJsonButton: document.querySelector("#exportJsonButton"),
   imageMeta: document.querySelector("#imageMeta"),
@@ -15,9 +17,13 @@ const els = {
   bandLegend: document.querySelector("#bandLegend"),
   bandBars: document.querySelector("#bandBars"),
   roiList: document.querySelector("#roiList"),
+  measureList: document.querySelector("#measureList"),
   deleteRoiButton: document.querySelector("#deleteRoiButton"),
+  deleteMeasureButton: document.querySelector("#deleteMeasureButton"),
   circleRadius: document.querySelector("#circleRadius"),
   fixedCircle: document.querySelector("#fixedCircle"),
+  pixelSpacing: document.querySelector("#pixelSpacing"),
+  measureUnit: document.querySelector("#measureUnit"),
   metricImages: document.querySelector("#metricImages"),
   metricTotalRois: document.querySelector("#metricTotalRois"),
   metricPatientMean: document.querySelector("#metricPatientMean"),
@@ -34,7 +40,137 @@ const ctx = els.viewer.getContext("2d", { willReadFrequently: false });
 const histCtx = els.hist.getContext("2d");
 
 const roiColors = ["#0f766e", "#d97706", "#2563eb", "#9333ea", "#be123c", "#4d7c0f"];
+const measureColors = ["#2563eb", "#d97706", "#9333ea", "#be123c", "#4d7c0f", "#0f766e"];
 const bandColors = ["#144b5a", "#0f766e", "#d97706", "#c2410c", "#7f1d1d", "#4338ca", "#7c3aed", "#be185d", "#475569", "#111827", "#0891b2"];
+
+const i18n = {
+  pt: {
+    openImage: "Abrir imagem",
+    histogramCsv: "Histograma CSV",
+    measurementsCsv: "Medidas CSV",
+    images: "Imagens",
+    noImages: "Sem imagens",
+    navigation: "Navegação",
+    roiTools: "Ferramentas de ROI",
+    measureTools: "Ferramentas de medida",
+    radiusPx: "Raio px",
+    fixedCircle: "Círculo com raio fixo",
+    scale: "Escala mm/px",
+    unit: "Unidade",
+    eiBands: "Bandas EI",
+    noRois: "Sem ROIs",
+    deleteRoi: "Excluir ROI",
+    measurements: "Medidas",
+    noMeasurements: "Sem medidas",
+    deleteMeasure: "Excluir medida",
+    emptyTitle: "Abra uma imagem de ultrassom",
+    emptySubtitle: "PNG, JPEG, WebP, BMP ou DICOM não comprimido.",
+    patient: "Paciente",
+    meanEi: "EI média",
+    result: "Resultado",
+    median: "Mediana",
+    sd: "DP",
+    histogram: "Histograma",
+    percentages: "Percentuais",
+    noSelectedRoi: "Sem ROI selecionada",
+    noImageLoaded: "Nenhuma imagem carregada",
+    imageLoadError: "Alguns arquivos não abriram",
+    fileReadFail: "falha ao ler arquivo",
+    unsupportedImage: "formato de imagem não suportado pelo navegador",
+    roi: "ROI",
+    measurement: "Medida",
+    distance: "distância",
+    rectArea: "área retangular",
+    circleArea: "área circular",
+    ellipseArea: "área elipsoide",
+    freeArea: "área livre",
+    angle: "ângulo",
+  },
+  en: {
+    openImage: "Open image",
+    histogramCsv: "Histogram CSV",
+    measurementsCsv: "Measurements CSV",
+    images: "Images",
+    noImages: "No images",
+    navigation: "Navigation",
+    roiTools: "ROI tools",
+    measureTools: "Measurement tools",
+    radiusPx: "Radius px",
+    fixedCircle: "Fixed-radius circle",
+    scale: "Scale mm/px",
+    unit: "Unit",
+    eiBands: "EI bands",
+    noRois: "No ROIs",
+    deleteRoi: "Delete ROI",
+    measurements: "Measurements",
+    noMeasurements: "No measurements",
+    deleteMeasure: "Delete measurement",
+    emptyTitle: "Open an ultrasound image",
+    emptySubtitle: "PNG, JPEG, WebP, BMP or uncompressed DICOM.",
+    patient: "Patient",
+    meanEi: "Mean EI",
+    result: "Result",
+    median: "Median",
+    sd: "SD",
+    histogram: "Histogram",
+    percentages: "Percentages",
+    noSelectedRoi: "No ROI selected",
+    noImageLoaded: "No image loaded",
+    imageLoadError: "Some files could not be opened",
+    fileReadFail: "failed to read file",
+    unsupportedImage: "image format not supported by the browser",
+    roi: "ROI",
+    measurement: "Measurement",
+    distance: "distance",
+    rectArea: "rectangular area",
+    circleArea: "circular area",
+    ellipseArea: "ellipsoid area",
+    freeArea: "free area",
+    angle: "angle",
+  },
+  es: {
+    openImage: "Abrir imagen",
+    histogramCsv: "Histograma CSV",
+    measurementsCsv: "Medidas CSV",
+    images: "Imágenes",
+    noImages: "Sin imágenes",
+    navigation: "Navegación",
+    roiTools: "Herramientas ROI",
+    measureTools: "Herramientas de medida",
+    radiusPx: "Radio px",
+    fixedCircle: "Círculo con radio fijo",
+    scale: "Escala mm/px",
+    unit: "Unidad",
+    eiBands: "Bandas EI",
+    noRois: "Sin ROIs",
+    deleteRoi: "Eliminar ROI",
+    measurements: "Medidas",
+    noMeasurements: "Sin medidas",
+    deleteMeasure: "Eliminar medida",
+    emptyTitle: "Abra una imagen de ultrasonido",
+    emptySubtitle: "PNG, JPEG, WebP, BMP o DICOM no comprimido.",
+    patient: "Paciente",
+    meanEi: "EI media",
+    result: "Resultado",
+    median: "Mediana",
+    sd: "DE",
+    histogram: "Histograma",
+    percentages: "Porcentajes",
+    noSelectedRoi: "Sin ROI seleccionada",
+    noImageLoaded: "Ninguna imagen cargada",
+    imageLoadError: "Algunos archivos no se pudieron abrir",
+    fileReadFail: "fallo al leer archivo",
+    unsupportedImage: "formato de imagen no soportado por el navegador",
+    roi: "ROI",
+    measurement: "Medida",
+    distance: "distancia",
+    rectArea: "área rectangular",
+    circleArea: "área circular",
+    ellipseArea: "área elipsoide",
+    freeArea: "área libre",
+    angle: "ángulo",
+  },
+};
 
 const state = {
   images: [],
@@ -42,13 +178,23 @@ const state = {
   image: null,
   gray: null,
   rois: [],
+  measurements: [],
   selectedId: null,
+  selectedMeasureId: null,
   activeTool: "pan",
+  language: "pt",
+  measureUnit: "px",
+  pixelSpacingMm: 1,
   bandMode: 50,
   view: { scale: 1, x: 0, y: 0 },
   drawing: null,
+  angleDraft: null,
   pointer: null,
 };
+
+function t(key) {
+  return i18n[state.language]?.[key] || i18n.pt[key] || key;
+}
 
 function bandsForMode(mode) {
   const step = Number(mode);
@@ -90,18 +236,41 @@ function syncActiveImage() {
   state.image = image;
   state.gray = image?.gray || null;
   state.rois = image?.rois || [];
+  state.measurements = image?.measurements || [];
   state.selectedId = image?.selectedId || null;
+  state.selectedMeasureId = image?.selectedMeasureId || null;
 }
 
 function setActiveImage(id, shouldFit = true) {
   if (state.image) state.image.selectedId = state.selectedId;
+  if (state.image) state.image.selectedMeasureId = state.selectedMeasureId;
   state.activeImageId = id;
   syncActiveImage();
   state.drawing = null;
+  state.angleDraft = null;
   state.pointer = null;
   if (shouldFit) fitImage();
   updateUi();
   draw();
+}
+
+function applyTranslations() {
+  document.documentElement.lang = state.language === "pt" ? "pt-BR" : state.language;
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((node) => {
+    node.title = t(node.dataset.i18nTitle);
+  });
+}
+
+function allMeasurements() {
+  return state.images.flatMap((image) =>
+    image.measurements.map((measurement) => ({
+      image,
+      measurement,
+    })),
+  );
 }
 
 function allRois() {
@@ -167,7 +336,10 @@ function draw() {
   ctx.scale(state.view.scale, state.view.scale);
   ctx.drawImage(state.image.canvas, 0, 0);
   state.rois.forEach((roi) => drawRoi(roi, roi.id === state.selectedId));
+  state.measurements.forEach((measurement) => drawMeasurement(measurement, measurement.id === state.selectedMeasureId));
   if (state.drawing && state.drawing.roi) drawRoi(state.drawing.roi, true, true);
+  if (state.drawing && state.drawing.measurement) drawMeasurement(state.drawing.measurement, true, true);
+  if (state.angleDraft) drawAngleDraft();
   ctx.restore();
 }
 
@@ -185,6 +357,10 @@ function drawRoi(roi, selected = false, draft = false) {
     ctx.rect(x, y, Math.abs(roi.w), Math.abs(roi.h));
   } else if (roi.type === "circle") {
     ctx.arc(roi.cx, roi.cy, Math.max(0, roi.r), 0, Math.PI * 2);
+  } else if (roi.type === "ellipse") {
+    const cx = roi.x + roi.w / 2;
+    const cy = roi.y + roi.h / 2;
+    ctx.ellipse(cx, cy, Math.abs(roi.w / 2), Math.abs(roi.h / 2), 0, 0, Math.PI * 2);
   } else if (roi.type === "freehand" && roi.points.length > 1) {
     ctx.moveTo(roi.points[0].x, roi.points[0].y);
     roi.points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
@@ -193,6 +369,59 @@ function drawRoi(roi, selected = false, draft = false) {
   ctx.fill();
   ctx.stroke();
   ctx.restore();
+}
+
+function drawMeasurement(measurement, selected = false, draft = false) {
+  ctx.save();
+  ctx.lineWidth = (draft ? 1 : selected ? 3 : 2) / state.view.scale;
+  ctx.strokeStyle = measurement.color;
+  ctx.fillStyle = `${measurement.color}18`;
+  ctx.setLineDash(draft ? [3 / state.view.scale, 3 / state.view.scale] : []);
+  ctx.beginPath();
+
+  if (measurement.type === "distance") {
+    ctx.moveTo(measurement.p1.x, measurement.p1.y);
+    ctx.lineTo(measurement.p2.x, measurement.p2.y);
+  } else if (measurement.type === "angle") {
+    ctx.moveTo(measurement.p1.x, measurement.p1.y);
+    ctx.lineTo(measurement.vertex.x, measurement.vertex.y);
+    ctx.lineTo(measurement.p2.x, measurement.p2.y);
+  } else if (measurement.type === "area-rect") {
+    const x = Math.min(measurement.x, measurement.x + measurement.w);
+    const y = Math.min(measurement.y, measurement.y + measurement.h);
+    ctx.rect(x, y, Math.abs(measurement.w), Math.abs(measurement.h));
+  } else if (measurement.type === "area-circle") {
+    ctx.arc(measurement.cx, measurement.cy, Math.max(0, measurement.r), 0, Math.PI * 2);
+  } else if (measurement.type === "area-ellipse") {
+    const cx = measurement.x + measurement.w / 2;
+    const cy = measurement.y + measurement.h / 2;
+    ctx.ellipse(cx, cy, Math.abs(measurement.w / 2), Math.abs(measurement.h / 2), 0, 0, Math.PI * 2);
+  } else if (measurement.type === "area-free" && measurement.points.length > 1) {
+    ctx.moveTo(measurement.points[0].x, measurement.points[0].y);
+    measurement.points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
+    ctx.closePath();
+  }
+
+  if (measurement.type.startsWith("area-")) ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawAngleDraft() {
+  const points = [...state.angleDraft.points];
+  if (state.pointer?.image) points.push(state.pointer.image);
+  if (points.length < 2) return;
+  drawMeasurement(
+    {
+      type: points.length >= 3 ? "angle" : "distance",
+      p1: points[0],
+      vertex: points[1],
+      p2: points[2] || points[1],
+      color: measureColors[state.measurements.length % measureColors.length],
+    },
+    true,
+    true,
+  );
 }
 
 async function handleFiles(files) {
@@ -214,13 +443,13 @@ async function handleFiles(files) {
   }
 
   if (firstNewImageId) setActiveImage(firstNewImageId);
-  if (failures.length) window.alert(`Alguns arquivos não abriram:\n\n${failures.join("\n")}`);
+  if (failures.length) window.alert(`${t("imageLoadError")}:\n\n${failures.join("\n")}`);
 }
 
 function loadRasterCanvas(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("falha ao ler arquivo"));
+    reader.onerror = () => reject(new Error(t("fileReadFail")));
     reader.onload = () => {
       const image = new Image();
       image.onload = () => {
@@ -231,7 +460,7 @@ function loadRasterCanvas(file) {
         imageCtx.drawImage(image, 0, 0);
         resolve(canvas);
       };
-      image.onerror = () => reject(new Error("formato de imagem não suportado pelo navegador"));
+      image.onerror = () => reject(new Error(t("unsupportedImage")));
       image.src = reader.result;
     };
     reader.readAsDataURL(file);
@@ -261,7 +490,9 @@ function addImageFromCanvas(canvas, name, source = "image") {
     height: canvas.height,
     gray,
     rois: [],
+    measurements: [],
     selectedId: null,
+    selectedMeasureId: null,
   };
   state.images.push(image);
   return image;
@@ -600,6 +831,11 @@ function boundsForRoi(roi, width, height) {
     y0 = Math.floor(roi.cy - roi.r);
     x1 = Math.ceil(roi.cx + roi.r);
     y1 = Math.ceil(roi.cy + roi.r);
+  } else if (roi.type === "ellipse") {
+    x0 = Math.floor(Math.min(roi.x, roi.x + roi.w));
+    y0 = Math.floor(Math.min(roi.y, roi.y + roi.h));
+    x1 = Math.ceil(Math.max(roi.x, roi.x + roi.w));
+    y1 = Math.ceil(Math.max(roi.y, roi.y + roi.h));
   } else if (roi.type === "freehand") {
     const xs = roi.points.map((point) => point.x);
     const ys = roi.points.map((point) => point.y);
@@ -628,6 +864,15 @@ function containsPixel(roi, x, y) {
 
   if (roi.type === "circle") {
     return (x - roi.cx) ** 2 + (y - roi.cy) ** 2 <= roi.r ** 2;
+  }
+
+  if (roi.type === "ellipse") {
+    const cx = roi.x + roi.w / 2;
+    const cy = roi.y + roi.h / 2;
+    const rx = Math.abs(roi.w / 2);
+    const ry = Math.abs(roi.h / 2);
+    if (!rx || !ry) return false;
+    return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
   }
 
   if (roi.type === "freehand") {
@@ -661,6 +906,17 @@ function createRoi(type, geometry) {
   };
 }
 
+function createMeasurement(type, geometry) {
+  const id = `measure_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  return {
+    id,
+    type,
+    label: `${t("measurement")} ${state.measurements.length + 1}`,
+    color: measureColors[state.measurements.length % measureColors.length],
+    ...geometry,
+  };
+}
+
 function finishRoi(roi) {
   if (!state.image || !roiHasArea(roi)) return;
   roi.analysis = analyzeRoi(roi);
@@ -671,10 +927,30 @@ function finishRoi(roi) {
   draw();
 }
 
+function finishMeasurement(measurement) {
+  if (!state.image || !measurementHasValue(measurement)) return;
+  state.measurements.push(measurement);
+  state.selectedMeasureId = measurement.id;
+  state.image.selectedMeasureId = measurement.id;
+  updateUi();
+  draw();
+}
+
 function roiHasArea(roi) {
   if (roi.type === "rect") return Math.abs(roi.w) >= 2 && Math.abs(roi.h) >= 2;
   if (roi.type === "circle") return roi.r >= 1;
+  if (roi.type === "ellipse") return Math.abs(roi.w) >= 2 && Math.abs(roi.h) >= 2;
   if (roi.type === "freehand") return roi.points.length >= 3;
+  return false;
+}
+
+function measurementHasValue(measurement) {
+  if (measurement.type === "distance") return pointDistance(measurement.p1, measurement.p2) >= 2;
+  if (measurement.type === "angle") return Boolean(measurement.p1 && measurement.vertex && measurement.p2);
+  if (measurement.type === "area-rect") return Math.abs(measurement.w) >= 2 && Math.abs(measurement.h) >= 2;
+  if (measurement.type === "area-circle") return measurement.r >= 1;
+  if (measurement.type === "area-ellipse") return Math.abs(measurement.w) >= 2 && Math.abs(measurement.h) >= 2;
+  if (measurement.type === "area-free") return measurement.points.length >= 3;
   return false;
 }
 
@@ -682,15 +958,105 @@ function selectedRoi() {
   return state.rois.find((roi) => roi.id === state.selectedId) || null;
 }
 
+function selectedMeasurement() {
+  return state.measurements.find((measurement) => measurement.id === state.selectedMeasureId) || null;
+}
+
+function pointDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function polygonArea(points) {
+  if (points.length < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+function angleDegrees(measurement) {
+  const a = {
+    x: measurement.p1.x - measurement.vertex.x,
+    y: measurement.p1.y - measurement.vertex.y,
+  };
+  const b = {
+    x: measurement.p2.x - measurement.vertex.x,
+    y: measurement.p2.y - measurement.vertex.y,
+  };
+  const dot = a.x * b.x + a.y * b.y;
+  const mag = Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y);
+  if (!mag) return 0;
+  return (Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180) / Math.PI;
+}
+
+function measurementBaseValue(measurement) {
+  if (measurement.type === "distance") return pointDistance(measurement.p1, measurement.p2);
+  if (measurement.type === "angle") return angleDegrees(measurement);
+  if (measurement.type === "area-rect") return Math.abs(measurement.w * measurement.h);
+  if (measurement.type === "area-circle") return Math.PI * measurement.r ** 2;
+  if (measurement.type === "area-ellipse") return Math.PI * Math.abs(measurement.w / 2) * Math.abs(measurement.h / 2);
+  if (measurement.type === "area-free") return polygonArea(measurement.points);
+  return 0;
+}
+
+function measurementDisplay(measurement) {
+  const base = measurementBaseValue(measurement);
+  if (measurement.type === "angle") {
+    return { value: base, unit: "°", text: `${formatNumber(base, 2)}°`, base };
+  }
+
+  const isArea = measurement.type.startsWith("area-");
+  const unit = state.measureUnit;
+  let value = base;
+  let suffix = isArea ? "px²" : "px";
+  if (unit === "mm") {
+    value = isArea ? base * state.pixelSpacingMm ** 2 : base * state.pixelSpacingMm;
+    suffix = isArea ? "mm²" : "mm";
+  } else if (unit === "cm") {
+    value = isArea ? (base * state.pixelSpacingMm ** 2) / 100 : (base * state.pixelSpacingMm) / 10;
+    suffix = isArea ? "cm²" : "cm";
+  }
+  return { value, unit: suffix, text: `${formatNumber(value, 2)} ${suffix}`, base };
+}
+
+function measurementTypeLabel(type) {
+  const labels = {
+    distance: t("distance"),
+    "area-rect": t("rectArea"),
+    "area-circle": t("circleArea"),
+    "area-ellipse": t("ellipseArea"),
+    "area-free": t("freeArea"),
+    angle: t("angle"),
+  };
+  return labels[type] || type;
+}
+
+function isRoiTool(tool) {
+  return ["rect", "circle", "ellipse", "freehand"].includes(tool);
+}
+
+function isMeasureTool(tool) {
+  return ["measure-distance", "measure-rect", "measure-circle", "measure-ellipse", "measure-freehand", "measure-angle"].includes(tool);
+}
+
 function updateUi() {
+  applyTranslations();
   els.emptyState.classList.toggle("hidden", Boolean(state.image));
   els.imageMeta.textContent = state.image
     ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)`
-    : "Nenhuma imagem carregada";
+    : `${t("noImageLoaded")} · GUST`;
   els.exportCsvButton.disabled = !allRois().length;
+  els.exportMeasurementsButton.disabled = !allMeasurements().length;
   els.exportHistogramButton.disabled = !allRois().length;
   els.exportJsonButton.disabled = !allRois().length;
   els.deleteRoiButton.disabled = !selectedRoi();
+  els.deleteMeasureButton.disabled = !selectedMeasurement();
+  els.languageSelect.value = state.language;
+  els.measureUnit.value = state.measureUnit;
+  els.pixelSpacing.value = state.pixelSpacingMm;
 
   els.toolButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.tool === state.activeTool);
@@ -702,6 +1068,7 @@ function updateUi() {
   renderBandLegend();
   renderImageList();
   renderRoiList();
+  renderMeasureList();
   renderPatientMetrics();
   renderMetrics();
   renderHistogram();
@@ -711,7 +1078,7 @@ function updateUi() {
 function renderImageList() {
   if (!state.images.length) {
     els.imageList.className = "image-list empty";
-    els.imageList.textContent = "Sem imagens";
+    els.imageList.textContent = t("noImages");
     return;
   }
 
@@ -770,7 +1137,7 @@ function renderBandLegend() {
 function renderRoiList() {
   if (!state.rois.length) {
     els.roiList.className = "roi-list empty";
-    els.roiList.textContent = "Sem ROIs";
+    els.roiList.textContent = t("noRois");
     return;
   }
 
@@ -784,6 +1151,28 @@ function renderRoiList() {
           <span class="roi-dot" style="background:${roi.color}"></span>
           <span class="roi-name">${roi.label}</span>
           <span class="roi-detail">${roi.type} · ${pixels} px · EI ${mean}</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderMeasureList() {
+  if (!state.measurements.length) {
+    els.measureList.className = "measure-list empty";
+    els.measureList.textContent = t("noMeasurements");
+    return;
+  }
+
+  els.measureList.className = "measure-list";
+  els.measureList.innerHTML = state.measurements
+    .map((measurement) => {
+      const display = measurementDisplay(measurement);
+      return `
+        <button class="measure-item ${measurement.id === state.selectedMeasureId ? "active" : ""}" data-measure-id="${measurement.id}" type="button">
+          <span class="measure-dot" style="background:${measurement.color}"></span>
+          <span class="measure-name">${measurement.label}</span>
+          <span class="measure-detail">${measurementTypeLabel(measurement.type)} · ${display.text}</span>
         </button>
       `;
     })
@@ -834,24 +1223,37 @@ function renderHistogram() {
   histCtx.lineTo(pad + chartWidth, pad + chartHeight);
   histCtx.stroke();
 
-  histCtx.fillStyle = roi.color;
+  const bands = summarizeBands(hist, roi.analysis.total);
   for (let i = 0; i < 256; i += 1) {
+    const bandIndex = bands.findIndex((band) => i >= band.start && i <= band.end);
     const x = pad + (i / 256) * chartWidth;
     const h = max ? (hist[i] / max) * chartHeight : 0;
+    histCtx.fillStyle = bandColors[Math.max(0, bandIndex) % bandColors.length];
     histCtx.fillRect(x, pad + chartHeight - h, Math.max(1, chartWidth / 256), h);
   }
 
   histCtx.fillStyle = "#657284";
   histCtx.font = "11px system-ui";
-  histCtx.fillText("0", pad, displayHeight - 5);
-  histCtx.fillText("255", pad + chartWidth - 20, displayHeight - 5);
+  histCtx.textAlign = "center";
+  const tickStep = Number(state.bandMode);
+  for (let value = 0; value <= 250; value += tickStep) {
+    const x = pad + (value / 255) * chartWidth;
+    histCtx.strokeStyle = "#d8dee7";
+    histCtx.beginPath();
+    histCtx.moveTo(x, pad + chartHeight);
+    histCtx.lineTo(x, pad + chartHeight + 4);
+    histCtx.stroke();
+    histCtx.fillText(String(value), x, displayHeight - 5);
+  }
+  histCtx.fillText("255", pad + chartWidth, displayHeight - 5);
+  histCtx.textAlign = "start";
 }
 
 function renderBandBars() {
   const roi = selectedRoi();
   if (!roi?.analysis?.bands?.length) {
     els.bandBars.className = "band-bars empty";
-    els.bandBars.textContent = "Sem ROI selecionada";
+    els.bandBars.textContent = t("noSelectedRoi");
     return;
   }
 
@@ -956,6 +1358,40 @@ function exportHistogramCsv() {
   );
 }
 
+function exportMeasurementsCsv() {
+  const header = [
+    "image",
+    "image_source",
+    "measurement",
+    "type",
+    "base_value_px_or_px2",
+    "display_value",
+    "display_unit",
+    "pixel_spacing_mm",
+  ];
+  const rows = [header];
+
+  allMeasurements().forEach(({ image, measurement }) => {
+    const display = measurementDisplay(measurement);
+    rows.push([
+      image.name,
+      image.source,
+      measurement.label,
+      measurement.type,
+      measurementBaseValue(measurement).toFixed(6),
+      display.value.toFixed(6),
+      display.unit,
+      state.pixelSpacingMm,
+    ]);
+  });
+
+  downloadText(
+    `${baseFileName()}_medidas.csv`,
+    rows.map((row) => row.map(csvCell).join(",")).join("\n"),
+    "text/csv;charset=utf-8",
+  );
+}
+
 function exportJson() {
   const payload = {
     images: state.images.map((image) => ({
@@ -965,7 +1401,15 @@ function exportJson() {
       width: image.width,
       height: image.height,
       rois: image.rois,
+      measurements: image.measurements.map((measurement) => ({
+        ...measurement,
+        value: measurementDisplay(measurement).value,
+        unit: measurementDisplay(measurement).unit,
+        baseValuePx: measurementBaseValue(measurement),
+      })),
     })),
+    measurementUnit: state.measureUnit,
+    pixelSpacingMm: state.pixelSpacingMm,
     bandMode: state.bandMode,
     patient: aggregateAnalysis(allRois().map(({ roi }) => roi)),
   };
@@ -995,6 +1439,18 @@ function downloadText(filename, text, type) {
 
 els.openFileButton.addEventListener("click", () => els.fileInput.click());
 els.demoButton.addEventListener("click", loadDemoImage);
+els.languageSelect.addEventListener("change", () => {
+  state.language = els.languageSelect.value;
+  updateUi();
+});
+els.measureUnit.addEventListener("change", () => {
+  state.measureUnit = els.measureUnit.value;
+  updateUi();
+});
+els.pixelSpacing.addEventListener("change", () => {
+  state.pixelSpacingMm = Math.max(0.0001, Number(els.pixelSpacing.value) || 1);
+  updateUi();
+});
 els.fileInput.addEventListener("change", (event) => {
   const files = [...event.target.files];
   if (files.length) handleFiles(files);
@@ -1030,6 +1486,15 @@ els.roiList.addEventListener("click", (event) => {
   draw();
 });
 
+els.measureList.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-measure-id]");
+  if (!item) return;
+  state.selectedMeasureId = item.dataset.measureId;
+  if (state.image) state.image.selectedMeasureId = state.selectedMeasureId;
+  updateUi();
+  draw();
+});
+
 els.deleteRoiButton.addEventListener("click", () => {
   const roi = selectedRoi();
   if (!roi) return;
@@ -1041,7 +1506,19 @@ els.deleteRoiButton.addEventListener("click", () => {
   draw();
 });
 
+els.deleteMeasureButton.addEventListener("click", () => {
+  const measurement = selectedMeasurement();
+  if (!measurement) return;
+  const index = state.measurements.findIndex((item) => item.id === measurement.id);
+  if (index >= 0) state.measurements.splice(index, 1);
+  state.selectedMeasureId = state.measurements.at(-1)?.id || null;
+  if (state.image) state.image.selectedMeasureId = state.selectedMeasureId;
+  updateUi();
+  draw();
+});
+
 els.exportCsvButton.addEventListener("click", exportCsv);
+els.exportMeasurementsButton.addEventListener("click", exportMeasurementsCsv);
 els.exportHistogramButton.addEventListener("click", exportHistogramCsv);
 els.exportJsonButton.addEventListener("click", exportJson);
 
@@ -1052,9 +1529,26 @@ els.viewer.addEventListener("pointerdown", (event) => {
   const image = screenToImage(screen);
   state.pointer = { screen, image, view: { ...state.view } };
 
+  if (state.activeTool === "measure-angle") {
+    if (!state.angleDraft) state.angleDraft = { points: [] };
+    state.angleDraft.points.push(image);
+    if (state.angleDraft.points.length === 3) {
+      const measurement = createMeasurement("angle", {
+        p1: state.angleDraft.points[0],
+        vertex: state.angleDraft.points[1],
+        p2: state.angleDraft.points[2],
+      });
+      finishMeasurement(measurement);
+      state.angleDraft = null;
+    }
+    draw();
+    return;
+  }
+
   if (state.activeTool === "pan") return;
 
   const color = roiColors[state.rois.length % roiColors.length];
+  const measureColor = measureColors[state.measurements.length % measureColors.length];
   if (state.activeTool === "rect") {
     state.drawing = {
       roi: createRoi("rect", { x: image.x, y: image.y, w: 0, h: 0, color }),
@@ -1070,6 +1564,30 @@ els.viewer.addEventListener("pointerdown", (event) => {
     state.drawing = {
       roi: createRoi("freehand", { points: [image], color }),
     };
+  } else if (state.activeTool === "ellipse") {
+    state.drawing = {
+      roi: createRoi("ellipse", { x: image.x, y: image.y, w: 0, h: 0, color }),
+    };
+  } else if (state.activeTool === "measure-distance") {
+    state.drawing = {
+      measurement: createMeasurement("distance", { p1: image, p2: image, color: measureColor }),
+    };
+  } else if (state.activeTool === "measure-rect") {
+    state.drawing = {
+      measurement: createMeasurement("area-rect", { x: image.x, y: image.y, w: 0, h: 0, color: measureColor }),
+    };
+  } else if (state.activeTool === "measure-circle") {
+    state.drawing = {
+      measurement: createMeasurement("area-circle", { cx: image.x, cy: image.y, r: 0, color: measureColor }),
+    };
+  } else if (state.activeTool === "measure-ellipse") {
+    state.drawing = {
+      measurement: createMeasurement("area-ellipse", { x: image.x, y: image.y, w: 0, h: 0, color: measureColor }),
+    };
+  } else if (state.activeTool === "measure-freehand") {
+    state.drawing = {
+      measurement: createMeasurement("area-free", { points: [image], color: measureColor }),
+    };
   }
   draw();
 });
@@ -1078,6 +1596,7 @@ els.viewer.addEventListener("pointermove", (event) => {
   if (!state.pointer || !state.image) return;
   const screen = pointerPoint(event);
   const image = screenToImage(screen);
+  state.pointer.image = image;
 
   if (state.activeTool === "pan" && !state.drawing) {
     state.view.x = state.pointer.view.x + screen.x - state.pointer.screen.x;
@@ -1086,18 +1605,36 @@ els.viewer.addEventListener("pointermove", (event) => {
     return;
   }
 
-  if (!state.drawing?.roi) return;
-  const roi = state.drawing.roi;
+  if (state.angleDraft) {
+    draw();
+    return;
+  }
 
-  if (roi.type === "rect") {
+  if (!state.drawing?.roi && !state.drawing?.measurement) return;
+  const roi = state.drawing.roi;
+  const measurement = state.drawing.measurement;
+
+  if (roi?.type === "rect" || roi?.type === "ellipse") {
     roi.w = image.x - roi.x;
     roi.h = image.y - roi.y;
-  } else if (roi.type === "circle" && !state.drawing.fixed) {
+  } else if (roi?.type === "circle" && !state.drawing.fixed) {
     roi.r = Math.hypot(image.x - roi.cx, image.y - roi.cy);
-  } else if (roi.type === "freehand") {
+  } else if (roi?.type === "freehand") {
     const last = roi.points.at(-1);
     if (!last || Math.hypot(image.x - last.x, image.y - last.y) >= 1.5) {
       roi.points.push(image);
+    }
+  } else if (measurement?.type === "distance") {
+    measurement.p2 = image;
+  } else if (measurement?.type === "area-rect" || measurement?.type === "area-ellipse") {
+    measurement.w = image.x - measurement.x;
+    measurement.h = image.y - measurement.y;
+  } else if (measurement?.type === "area-circle") {
+    measurement.r = Math.hypot(image.x - measurement.cx, image.y - measurement.cy);
+  } else if (measurement?.type === "area-free") {
+    const last = measurement.points.at(-1);
+    if (!last || Math.hypot(image.x - last.x, image.y - last.y) >= 1.5) {
+      measurement.points.push(image);
     }
   }
 
@@ -1111,6 +1648,9 @@ els.viewer.addEventListener("pointerup", (event) => {
   if (state.drawing?.roi) {
     finishRoi(state.drawing.roi);
   }
+  if (state.drawing?.measurement) {
+    finishMeasurement(state.drawing.measurement);
+  }
 
   state.drawing = null;
   state.pointer = null;
@@ -1119,6 +1659,7 @@ els.viewer.addEventListener("pointerup", (event) => {
 
 els.viewer.addEventListener("pointercancel", () => {
   state.drawing = null;
+  state.angleDraft = null;
   state.pointer = null;
   draw();
 });

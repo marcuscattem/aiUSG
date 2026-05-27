@@ -3,28 +3,34 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>aiUSG EI</title>
+    <title>GUST</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true">US</div>
+          <div class="brand-mark" aria-hidden="true">GU</div>
           <div>
-            <h1>aiUSG EI</h1>
-            <p id="imageMeta">Nenhuma imagem carregada</p>
+            <h1>GUST</h1>
+            <p id="imageMeta">Grayscale Ultrasound System Technology</p>
           </div>
         </div>
         <div class="top-actions">
+          <select id="languageSelect" class="select-control" title="Idioma">
+            <option value="pt">Português</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
           <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,.dcm,.dicom,application/dicom" multiple hidden />
-          <button id="openFileButton" class="primary-button" type="button" title="Abrir imagem">
+          <button id="openFileButton" class="primary-button" type="button" title="Abrir imagem" data-i18n-title="openImage">
             <span aria-hidden="true">+</span>
-            Abrir imagem
+            <span data-i18n="openImage">Abrir imagem</span>
           </button>
           <button id="demoButton" type="button" title="Carregar demo">Demo</button>
           <button id="exportCsvButton" type="button" title="Exportar CSV" disabled>CSV</button>
-          <button id="exportHistogramButton" type="button" title="Exportar histograma 0-255" disabled>Histograma CSV</button>
+          <button id="exportMeasurementsButton" type="button" title="Exportar medidas" disabled data-i18n="measurementsCsv">Medidas CSV</button>
+          <button id="exportHistogramButton" type="button" title="Exportar histograma 0-255" disabled data-i18n="histogramCsv">Histograma CSV</button>
           <button id="exportJsonButton" type="button" title="Exportar JSON" disabled>JSON</button>
         </div>
       </header>
@@ -32,38 +38,83 @@
       <main class="workspace">
         <aside class="left-panel">
           <section class="panel-section">
-            <h2>Imagens</h2>
-            <div id="imageList" class="image-list empty">Sem imagens</div>
+            <h2 data-i18n="images">Imagens</h2>
+            <div id="imageList" class="image-list empty" data-i18n="noImages">Sem imagens</div>
           </section>
 
           <section class="panel-section">
-            <h2>Ferramentas</h2>
-            <div class="tool-grid" role="group" aria-label="Ferramentas de ROI">
+            <h2 data-i18n="navigation">Navegação</h2>
+            <div class="tool-grid small-grid" role="group" aria-label="Navegação">
               <button class="tool-button active" data-tool="pan" type="button" title="Mover imagem">
                 <span aria-hidden="true">↕</span>
               </button>
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <h2 data-i18n="roiTools">Ferramentas de ROI</h2>
+            <div class="tool-grid" role="group" aria-label="Ferramentas de ROI">
               <button class="tool-button" data-tool="rect" type="button" title="Retângulo">
                 <span aria-hidden="true">▭</span>
               </button>
               <button class="tool-button" data-tool="circle" type="button" title="Círculo">
                 <span aria-hidden="true">○</span>
               </button>
+              <button class="tool-button" data-tool="ellipse" type="button" title="Elipse">
+                <span aria-hidden="true">◯</span>
+              </button>
               <button class="tool-button" data-tool="freehand" type="button" title="Mão livre">
                 <span aria-hidden="true">⌁</span>
               </button>
             </div>
             <div class="field-row">
-              <label for="circleRadius">Raio px</label>
+              <label for="circleRadius" data-i18n="radiusPx">Raio px</label>
               <input id="circleRadius" type="number" min="1" step="1" value="40" />
             </div>
             <label class="check-row">
               <input id="fixedCircle" type="checkbox" />
-              <span>Círculo com raio fixo</span>
+              <span data-i18n="fixedCircle">Círculo com raio fixo</span>
             </label>
           </section>
 
           <section class="panel-section">
-            <h2>Bandas EI</h2>
+            <h2 data-i18n="measureTools">Ferramentas de medida</h2>
+            <div class="tool-grid measure-grid" role="group" aria-label="Ferramentas de medida">
+              <button class="tool-button" data-tool="measure-distance" type="button" title="Distância">
+                <span aria-hidden="true">↔</span>
+              </button>
+              <button class="tool-button" data-tool="measure-rect" type="button" title="Área retangular">
+                <span aria-hidden="true">▭</span>
+              </button>
+              <button class="tool-button" data-tool="measure-circle" type="button" title="Área circular">
+                <span aria-hidden="true">○</span>
+              </button>
+              <button class="tool-button" data-tool="measure-ellipse" type="button" title="Área elipsoide">
+                <span aria-hidden="true">◯</span>
+              </button>
+              <button class="tool-button" data-tool="measure-freehand" type="button" title="Área livre">
+                <span aria-hidden="true">⌁</span>
+              </button>
+              <button class="tool-button" data-tool="measure-angle" type="button" title="Ângulo">
+                <span aria-hidden="true">∠</span>
+              </button>
+            </div>
+            <div class="field-row">
+              <label for="pixelSpacing" data-i18n="scale">Escala mm/px</label>
+              <input id="pixelSpacing" type="number" min="0.0001" step="0.01" value="1" />
+            </div>
+            <div class="field-row">
+              <label for="measureUnit" data-i18n="unit">Unidade</label>
+              <select id="measureUnit" class="select-control">
+                <option value="px">px</option>
+                <option value="mm">mm</option>
+                <option value="cm">cm</option>
+              </select>
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <h2 data-i18n="eiBands">Bandas EI</h2>
             <div class="segmented" role="group" aria-label="Bandas de ecointensidade">
               <button class="segment active" data-band-mode="50" type="button">50</button>
               <button class="segment" data-band-mode="25" type="button">25</button>
@@ -73,25 +124,31 @@
 
           <section class="panel-section">
             <h2>ROIs</h2>
-            <div id="roiList" class="roi-list empty">Sem ROIs</div>
-            <button id="deleteRoiButton" type="button" disabled>Excluir ROI</button>
+            <div id="roiList" class="roi-list empty" data-i18n="noRois">Sem ROIs</div>
+            <button id="deleteRoiButton" type="button" disabled data-i18n="deleteRoi">Excluir ROI</button>
+          </section>
+
+          <section class="panel-section">
+            <h2 data-i18n="measurements">Medidas</h2>
+            <div id="measureList" class="measure-list empty" data-i18n="noMeasurements">Sem medidas</div>
+            <button id="deleteMeasureButton" type="button" disabled data-i18n="deleteMeasure">Excluir medida</button>
           </section>
         </aside>
 
         <section class="viewer-wrap">
           <canvas id="viewerCanvas"></canvas>
           <div id="emptyState" class="empty-state">
-            <strong>Abra uma imagem de ultrassom</strong>
-            <span>PNG, JPEG, WebP, BMP ou DICOM não comprimido.</span>
+            <strong data-i18n="emptyTitle">Abra uma imagem de ultrassom</strong>
+            <span data-i18n="emptySubtitle">PNG, JPEG, WebP, BMP ou DICOM não comprimido.</span>
           </div>
         </section>
 
         <aside class="right-panel">
           <section class="panel-section metrics">
-            <h2>Paciente</h2>
+            <h2 data-i18n="patient">Paciente</h2>
             <dl>
               <div>
-                <dt>Imagens</dt>
+                <dt data-i18n="images">Imagens</dt>
                 <dd id="metricImages">-</dd>
               </div>
               <div>
@@ -99,7 +156,7 @@
                 <dd id="metricTotalRois">-</dd>
               </div>
               <div>
-                <dt>EI média</dt>
+                <dt data-i18n="meanEi">EI média</dt>
                 <dd id="metricPatientMean">-</dd>
               </div>
               <div>
@@ -110,7 +167,7 @@
           </section>
 
           <section class="panel-section metrics">
-            <h2>Resultado</h2>
+            <h2 data-i18n="result">Resultado</h2>
             <dl>
               <div>
                 <dt>ROI</dt>
@@ -121,15 +178,15 @@
                 <dd id="metricPixels">-</dd>
               </div>
               <div>
-                <dt>EI média</dt>
+                <dt data-i18n="meanEi">EI média</dt>
                 <dd id="metricMean">-</dd>
               </div>
               <div>
-                <dt>Mediana</dt>
+                <dt data-i18n="median">Mediana</dt>
                 <dd id="metricMedian">-</dd>
               </div>
               <div>
-                <dt>DP</dt>
+                <dt data-i18n="sd">DP</dt>
                 <dd id="metricSd">-</dd>
               </div>
               <div>
@@ -140,13 +197,13 @@
           </section>
 
           <section class="panel-section">
-            <h2>Histograma</h2>
+            <h2 data-i18n="histogram">Histograma</h2>
             <canvas id="histogramCanvas" class="chart-canvas" width="520" height="220"></canvas>
           </section>
 
           <section class="panel-section">
-            <h2>Percentuais</h2>
-            <div id="bandBars" class="band-bars empty">Sem ROI selecionada</div>
+            <h2 data-i18n="percentages">Percentuais</h2>
+            <div id="bandBars" class="band-bars empty" data-i18n="noSelectedRoi">Sem ROI selecionada</div>
           </section>
         </aside>
       </main>
