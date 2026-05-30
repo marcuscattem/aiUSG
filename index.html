@@ -65,6 +65,7 @@
                 <span aria-hidden="true">⌁</span>
               </button>
             </div>
+            <button id="autoRectusButton" class="wide-action" type="button" disabled data-i18n="autoRectus">Auto reto femoral</button>
             <div class="field-row">
               <label for="circleRadius" data-i18n="radiusPx">Raio px</label>
               <input id="circleRadius" type="number" min="1" step="1" value="40" />
@@ -118,6 +119,26 @@
               <button class="segment" data-band-mode="25" type="button">25</button>
             </div>
             <div id="bandLegend" class="band-legend"></div>
+          </section>
+
+          <section class="panel-section">
+            <h2 data-i18n="colorFilters">Filtro de cor</h2>
+            <label class="check-row">
+              <input id="ignoreColoredPixels" type="checkbox" />
+              <span data-i18n="ignoreColoredPixels">Ignorar pixels coloridos</span>
+            </label>
+            <div class="field-row">
+              <label for="colorTolerance" data-i18n="colorTolerance">Tolerância</label>
+              <input id="colorTolerance" type="number" min="0" max="80" step="1" value="12" />
+            </div>
+            <div class="color-filter-actions">
+              <input id="ignoredColorInput" type="color" value="#ff0000" title="Cor específica" />
+              <button id="addIgnoredColorButton" type="button" data-i18n="addIgnoredColor">Adicionar</button>
+              <button id="pickColorButton" type="button" data-i18n="pickColor">Conta-gotas</button>
+              <button id="clearIgnoredColorsButton" type="button" data-i18n="clearIgnoredColors">Limpar</button>
+            </div>
+            <div class="color-list-label" data-i18n="ignoredColors">Cores ignoradas</div>
+            <div id="ignoredColorsList" class="color-list empty" data-i18n="noIgnoredColors">Nenhuma cor específica</div>
           </section>
 
           <section class="panel-section">

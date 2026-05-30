@@ -211,6 +211,11 @@ h2 {
   color: #08433e;
 }
 
+.wide-action {
+  margin-top: 10px;
+  width: 100%;
+}
+
 .field-row {
   align-items: center;
   display: grid;
@@ -276,6 +281,73 @@ input[type="number"],
   display: inline-block;
   height: 12px;
   width: 12px;
+}
+
+.color-filter-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 42px 1fr 1fr;
+  margin-top: 12px;
+}
+
+.color-filter-actions input[type="color"] {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  height: 36px;
+  padding: 3px;
+  width: 42px;
+}
+
+.color-filter-actions button {
+  height: 36px;
+  padding: 0 8px;
+}
+
+.color-filter-actions button:last-child {
+  grid-column: 2 / 4;
+}
+
+.color-list-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 12px;
+  text-transform: uppercase;
+}
+
+.color-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.color-list.empty {
+  color: var(--muted);
+  display: block;
+  font-size: 13px;
+}
+
+.ignored-color {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: inline-flex;
+  gap: 6px;
+  height: 30px;
+  padding: 0 6px;
+}
+
+.ignored-color .swatch {
+  border: 1px solid rgba(17, 24, 39, 0.22);
+}
+
+.ignored-color button {
+  border: 0;
+  height: 22px;
+  padding: 0 4px;
 }
 
 .roi-list,
@@ -414,6 +486,10 @@ input[type="number"],
 
 #viewerCanvas.editing-mode {
   cursor: grabbing;
+}
+
+#viewerCanvas.picking-mode {
+  cursor: copy;
 }
 
 .empty-state {

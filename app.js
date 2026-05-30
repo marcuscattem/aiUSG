@@ -7,10 +7,18 @@ const els = {
   demoButton: document.querySelector("#demoButton"),
   undoButton: document.querySelector("#undoButton"),
   exportExcelButton: document.querySelector("#exportExcelButton"),
+  autoRectusButton: document.querySelector("#autoRectusButton"),
   exportBandsOption: document.querySelector("#exportBandsOption"),
   exportRoisOption: document.querySelector("#exportRoisOption"),
   exportHistogramOption: document.querySelector("#exportHistogramOption"),
   exportMeasurementsOption: document.querySelector("#exportMeasurementsOption"),
+  ignoreColoredPixels: document.querySelector("#ignoreColoredPixels"),
+  colorTolerance: document.querySelector("#colorTolerance"),
+  ignoredColorInput: document.querySelector("#ignoredColorInput"),
+  addIgnoredColorButton: document.querySelector("#addIgnoredColorButton"),
+  pickColorButton: document.querySelector("#pickColorButton"),
+  clearIgnoredColorsButton: document.querySelector("#clearIgnoredColorsButton"),
+  ignoredColorsList: document.querySelector("#ignoredColorsList"),
   imageMeta: document.querySelector("#imageMeta"),
   emptyState: document.querySelector("#emptyState"),
   imageList: document.querySelector("#imageList"),
@@ -56,10 +64,22 @@ const i18n = {
     exportRois: "ROIs",
     exportHistogram: "Histograma 0-255",
     exportMeasurements: "Medidas",
+    colorFilters: "Filtro de cor",
+    ignoreColoredPixels: "Ignorar pixels coloridos",
+    colorTolerance: "Tolerância",
+    addIgnoredColor: "Adicionar",
+    pickColor: "Conta-gotas",
+    pickingColor: "Clique na imagem",
+    clearIgnoredColors: "Limpar",
+    ignoredColors: "Cores ignoradas",
+    noIgnoredColors: "Nenhuma cor específica",
+    ignoredShort: "ign.",
     images: "Imagens",
     noImages: "Sem imagens",
     navigation: "Navegação",
     roiTools: "Ferramentas de ROI",
+    autoRectus: "Auto reto femoral",
+    autoRectusFail: "Não foi possível sugerir um retângulo nesta imagem.",
     measureTools: "Ferramentas de medida",
     radiusPx: "Raio px",
     fixedCircle: "Círculo com raio fixo",
@@ -104,10 +124,22 @@ const i18n = {
     exportRois: "ROIs",
     exportHistogram: "Histogram 0-255",
     exportMeasurements: "Measurements",
+    colorFilters: "Color filter",
+    ignoreColoredPixels: "Ignore colored pixels",
+    colorTolerance: "Tolerance",
+    addIgnoredColor: "Add",
+    pickColor: "Eyedropper",
+    pickingColor: "Click image",
+    clearIgnoredColors: "Clear",
+    ignoredColors: "Ignored colors",
+    noIgnoredColors: "No specific color",
+    ignoredShort: "ignored",
     images: "Images",
     noImages: "No images",
     navigation: "Navigation",
     roiTools: "ROI tools",
+    autoRectus: "Auto rectus femoris",
+    autoRectusFail: "Could not suggest a rectangle for this image.",
     measureTools: "Measurement tools",
     radiusPx: "Radius px",
     fixedCircle: "Fixed-radius circle",
@@ -152,10 +184,22 @@ const i18n = {
     exportRois: "ROIs",
     exportHistogram: "Histograma 0-255",
     exportMeasurements: "Medidas",
+    colorFilters: "Filtro de color",
+    ignoreColoredPixels: "Ignorar píxeles coloreados",
+    colorTolerance: "Tolerancia",
+    addIgnoredColor: "Agregar",
+    pickColor: "Cuentagotas",
+    pickingColor: "Haga clic en la imagen",
+    clearIgnoredColors: "Limpiar",
+    ignoredColors: "Colores ignorados",
+    noIgnoredColors: "Ningún color específico",
+    ignoredShort: "ign.",
     images: "Imágenes",
     noImages: "Sin imágenes",
     navigation: "Navegación",
     roiTools: "Herramientas ROI",
+    autoRectus: "Auto recto femoral",
+    autoRectusFail: "No fue posible sugerir un rectángulo en esta imagen.",
     measureTools: "Herramientas de medida",
     radiusPx: "Radio px",
     fixedCircle: "Círculo con radio fijo",
@@ -206,6 +250,10 @@ const state = {
   measureUnit: "px",
   pixelSpacingMm: 1,
   bandMode: 50,
+  ignoreColoredPixels: false,
+  colorTolerance: 12,
+  ignoredColors: [],
+  pickingIgnoreColor: false,
   view: { scale: 1, x: 0, y: 0 },
   drawing: null,
   angleDraft: null,
@@ -270,6 +318,7 @@ function setActiveImage(id, shouldFit = true) {
   syncActiveImage();
   state.drawing = null;
   state.angleDraft = null;
+  state.pickingIgnoreColor = false;
   state.pointer = null;
   if (shouldFit) fitImage();
   updateUi();
@@ -585,8 +634,12 @@ function addImageFromCanvas(canvas, name, source = "image") {
   const imageCtx = canvas.getContext("2d", { willReadFrequently: true });
   const data = imageCtx.getImageData(0, 0, canvas.width, canvas.height).data;
   const gray = new Uint8Array(canvas.width * canvas.height);
+  const rgb = new Uint8Array(canvas.width * canvas.height * 3);
 
   for (let i = 0, j = 0; i < data.length; i += 4, j += 1) {
+    rgb[j * 3] = data[i];
+    rgb[j * 3 + 1] = data[i + 1];
+    rgb[j * 3 + 2] = data[i + 2];
     gray[j] = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
   }
 
@@ -598,6 +651,7 @@ function addImageFromCanvas(canvas, name, source = "image") {
     width: canvas.width,
     height: canvas.height,
     gray,
+    rgb,
     rois: [],
     measurements: [],
     selectedId: null,
@@ -856,11 +910,17 @@ function analyzeRoi(roi, image = state.image) {
   const { width, height, gray } = image;
   const hist = new Uint32Array(256);
   const bounds = boundsForRoi(roi, width, height);
+  let ignored = 0;
 
   for (let y = bounds.y0; y <= bounds.y1; y += 1) {
     for (let x = bounds.x0; x <= bounds.x1; x += 1) {
       if (!containsPixel(roi, x + 0.5, y + 0.5)) continue;
-      hist[gray[y * width + x]] += 1;
+      const pixelIndex = y * width + x;
+      if (shouldIgnorePixel(image, pixelIndex)) {
+        ignored += 1;
+        continue;
+      }
+      hist[gray[pixelIndex]] += 1;
     }
   }
 
@@ -879,7 +939,7 @@ function analyzeRoi(roi, image = state.image) {
   }
 
   if (!total) {
-    return { hist: [...hist], total: 0, mean: 0, median: 0, sd: 0, min: 0, max: 0, bands: [] };
+    return { hist: [...hist], total: 0, ignored, mean: 0, median: 0, sd: 0, min: 0, max: 0, bands: [] };
   }
 
   const mean = weighted / total;
@@ -902,6 +962,7 @@ function analyzeRoi(roi, image = state.image) {
   return {
     hist: [...hist],
     total,
+    ignored,
     mean,
     median,
     sd: Math.sqrt(varianceSum / total),
@@ -923,6 +984,203 @@ function summarizeBands(hist, total) {
       color: bandColors[index % bandColors.length],
     };
   });
+}
+
+function shouldIgnorePixel(image, pixelIndex) {
+  if (!image.rgb) return false;
+  if (!state.ignoreColoredPixels && !state.ignoredColors.length) return false;
+  const rgb = pixelRgb(image, pixelIndex);
+  if (state.ignoreColoredPixels && isColoredPixel(rgb)) return true;
+  return state.ignoredColors.some((color) => colorDistance(rgb, color) <= state.colorTolerance);
+}
+
+function pixelRgb(image, pixelIndex) {
+  const base = pixelIndex * 3;
+  return {
+    r: image.rgb[base],
+    g: image.rgb[base + 1],
+    b: image.rgb[base + 2],
+  };
+}
+
+function isColoredPixel(color) {
+  return Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b) > state.colorTolerance;
+}
+
+function colorDistance(a, b) {
+  return Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), Math.abs(a.b - b.b));
+}
+
+function colorToHex(color) {
+  return `#${[color.r, color.g, color.b].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function colorFromHex(hex) {
+  const clean = hex.replace("#", "");
+  return {
+    r: Number.parseInt(clean.slice(0, 2), 16),
+    g: Number.parseInt(clean.slice(2, 4), 16),
+    b: Number.parseInt(clean.slice(4, 6), 16),
+  };
+}
+
+function addIgnoredColor(color) {
+  if (!Number.isFinite(color.r) || !Number.isFinite(color.g) || !Number.isFinite(color.b)) return;
+  const normalized = {
+    r: clamp(Math.round(color.r), 0, 255),
+    g: clamp(Math.round(color.g), 0, 255),
+    b: clamp(Math.round(color.b), 0, 255),
+  };
+  if (state.ignoredColors.some((item) => colorDistance(item, normalized) === 0)) return;
+  state.ignoredColors.push(normalized);
+  updateAnalysesAfterFilterChange();
+}
+
+function sampleIgnoredColor(point) {
+  if (!state.image?.rgb) return;
+  const x = Math.floor(point.x);
+  const y = Math.floor(point.y);
+  if (x < 0 || y < 0 || x >= state.image.width || y >= state.image.height) return;
+  addIgnoredColor(pixelRgb(state.image, y * state.image.width + x));
+}
+
+function updateAnalysesAfterFilterChange() {
+  updateAllAnalyses();
+  updateUi();
+  draw();
+}
+
+function createAutoRectusRoi() {
+  if (!state.image) return;
+  const geometry = suggestRectusRectangle(state.image);
+  if (!geometry) {
+    window.alert(t("autoRectusFail"));
+    return;
+  }
+  const roi = createRoi("rect", geometry);
+  roi.label = `RF auto ${state.rois.length + 1}`;
+  finishRoi(roi);
+  state.activeTool = "pan";
+  updateUi();
+}
+
+function suggestRectusRectangle(image) {
+  if (!image?.gray?.length) return null;
+  const cell = Math.max(4, Math.min(10, Math.round(Math.min(image.width, image.height) / 95)));
+  const cols = Math.floor(image.width / cell);
+  const rows = Math.floor(image.height / cell);
+  if (cols < 8 || rows < 6) return null;
+
+  const values = centralGrayscaleValues(image);
+  if (!values.length) return null;
+  const low = percentile(values, 0.12);
+  const high = percentile(values, 0.86);
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      grid[row][col] = isRectusCellCandidate(image, col * cell, row * cell, cell, low, high);
+    }
+  }
+
+  const rect = largestRectInGrid(grid);
+  if (!rect || rect.w < 4 || rect.h < 3) return fallbackRectusRectangle(image);
+
+  const pad = cell;
+  const x = clamp(rect.x * cell + pad, 0, image.width - 1);
+  const y = clamp(rect.y * cell + pad, 0, image.height - 1);
+  const w = clamp(rect.w * cell - pad * 2, 1, image.width - x);
+  const h = clamp(rect.h * cell - pad * 2, 1, image.height - y);
+  if (w < image.width * 0.08 || h < image.height * 0.06) return fallbackRectusRectangle(image);
+  return { x, y, w, h };
+}
+
+function centralGrayscaleValues(image) {
+  const values = [];
+  const x0 = Math.floor(image.width * 0.05);
+  const x1 = Math.ceil(image.width * 0.95);
+  const y0 = Math.floor(image.height * 0.08);
+  const y1 = Math.ceil(image.height * 0.92);
+  for (let y = y0; y < y1; y += 2) {
+    for (let x = x0; x < x1; x += 2) {
+      const index = y * image.width + x;
+      const rgb = image.rgb ? pixelRgb(image, index) : null;
+      if (rgb && isColoredPixel(rgb)) continue;
+      values.push(image.gray[index]);
+    }
+  }
+  return values;
+}
+
+function isRectusCellCandidate(image, x0, y0, size, low, high) {
+  let valid = 0;
+  let total = 0;
+  let sum = 0;
+  const x1 = Math.min(image.width, x0 + size);
+  const y1 = Math.min(image.height, y0 + size);
+
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const index = y * image.width + x;
+      const value = image.gray[index];
+      const rgb = image.rgb ? pixelRgb(image, index) : null;
+      if (rgb && isColoredPixel(rgb)) continue;
+      total += 1;
+      sum += value;
+      if (value >= low && value <= high) valid += 1;
+    }
+  }
+
+  if (!total) return false;
+  const mean = sum / total;
+  return valid / total >= 0.56 && mean >= low && mean <= high;
+}
+
+function largestRectInGrid(grid) {
+  const rows = grid.length;
+  const cols = grid[0]?.length || 0;
+  const heights = Array(cols).fill(0);
+  let best = null;
+  let bestScore = 0;
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) heights[col] = grid[row][col] ? heights[col] + 1 : 0;
+    const stack = [];
+    for (let col = 0; col <= cols; col += 1) {
+      const current = col === cols ? 0 : heights[col];
+      while (stack.length && current < heights[stack.at(-1)]) {
+        const top = stack.pop();
+        const height = heights[top];
+        const left = stack.length ? stack.at(-1) + 1 : 0;
+        const width = col - left;
+        const x = left;
+        const y = row - height + 1;
+        const area = width * height;
+        const centerBias = 1 - 0.22 * (Math.abs((x + width / 2) / cols - 0.5) + Math.abs((y + height / 2) / rows - 0.5));
+        const score = area * centerBias;
+        if (width >= 4 && height >= 3 && score > bestScore) {
+          best = { x, y, w: width, h: height };
+          bestScore = score;
+        }
+      }
+      stack.push(col);
+    }
+  }
+  return best;
+}
+
+function fallbackRectusRectangle(image) {
+  return {
+    x: Math.round(image.width * 0.25),
+    y: Math.round(image.height * 0.34),
+    w: Math.round(image.width * 0.5),
+    h: Math.round(image.height * 0.24),
+  };
+}
+
+function percentile(values, ratio) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * ratio)))];
 }
 
 function boundsForRoi(roi, width, height) {
@@ -1377,24 +1635,30 @@ function updateUi() {
     ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)`
     : `${t("noImageLoaded")} · GUST`;
   els.exportExcelButton.disabled = !hasExcelExportData();
+  els.autoRectusButton.disabled = !state.image;
   els.deleteRoiButton.disabled = !selectedRoi();
   els.deleteMeasureButton.disabled = !selectedMeasurement();
   updateUndoButton();
   els.languageSelect.value = state.language;
   els.measureUnit.value = state.measureUnit;
   els.pixelSpacing.value = state.pixelSpacingMm;
+  els.ignoreColoredPixels.checked = state.ignoreColoredPixels;
+  els.colorTolerance.value = state.colorTolerance;
+  els.pickColorButton.textContent = state.pickingIgnoreColor ? t("pickingColor") : t("pickColor");
 
   els.toolButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.tool === state.activeTool);
   });
   els.viewer.classList.toggle("pan-mode", state.activeTool === "pan" && !state.editing);
   els.viewer.classList.toggle("editing-mode", Boolean(state.editing));
+  els.viewer.classList.toggle("picking-mode", state.pickingIgnoreColor);
   els.bandButtons.forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.bandMode) === state.bandMode);
   });
 
   renderBandLegend();
   renderImageList();
+  renderIgnoredColors();
   renderRoiList();
   renderMeasureList();
   renderPatientMetrics();
@@ -1462,6 +1726,28 @@ function renderBandLegend() {
     .join("");
 }
 
+function renderIgnoredColors() {
+  if (!state.ignoredColors.length) {
+    els.ignoredColorsList.className = "color-list empty";
+    els.ignoredColorsList.textContent = t("noIgnoredColors");
+    return;
+  }
+
+  els.ignoredColorsList.className = "color-list";
+  els.ignoredColorsList.innerHTML = state.ignoredColors
+    .map((color, index) => {
+      const hex = colorToHex(color);
+      return `
+        <span class="ignored-color">
+          <span class="swatch" style="background:${hex}"></span>
+          <span>${hex.toUpperCase()}</span>
+          <button type="button" data-remove-color="${index}" title="Remover">×</button>
+        </span>
+      `;
+    })
+    .join("");
+}
+
 function renderRoiList() {
   if (!state.rois.length) {
     els.roiList.className = "roi-list empty";
@@ -1474,11 +1760,12 @@ function renderRoiList() {
     .map((roi) => {
       const pixels = roi.analysis ? formatInteger(roi.analysis.total) : "-";
       const mean = roi.analysis ? formatNumber(roi.analysis.mean, 1) : "-";
+      const ignored = roi.analysis?.ignored ? ` · ${formatInteger(roi.analysis.ignored)} ${t("ignoredShort")}` : "";
       return `
         <button class="roi-item ${roi.id === state.selectedId ? "active" : ""}" data-roi-id="${roi.id}" type="button">
           <span class="roi-dot" style="background:${roi.color}"></span>
           <span class="roi-name">${roi.label}</span>
-          <span class="roi-detail">${roi.type} · ${pixels} px · EI ${mean}</span>
+          <span class="roi-detail">${roi.type} · ${pixels} px · EI ${mean}${ignored}</span>
         </button>
       `;
     })
@@ -1610,6 +1897,7 @@ function exportCsv() {
     "roi",
     "type",
     "total_pixels",
+    "ignored_pixels",
     "mean_ei",
     "median_ei",
     "sd_ei",
@@ -1629,6 +1917,7 @@ function exportCsv() {
         roi.label,
         roi.type,
         roi.analysis.total,
+        roi.analysis.ignored || 0,
         roi.analysis.mean.toFixed(4),
         roi.analysis.median,
         roi.analysis.sd.toFixed(4),
@@ -1739,6 +2028,11 @@ function exportJson() {
     measurementUnit: state.measureUnit,
     pixelSpacingMm: state.pixelSpacingMm,
     bandMode: state.bandMode,
+    colorFilter: {
+      ignoreColoredPixels: state.ignoreColoredPixels,
+      colorTolerance: state.colorTolerance,
+      ignoredColors: state.ignoredColors.map(colorToHex),
+    },
     patient: aggregateAnalysis(allRois().map(({ roi }) => roi)),
   };
   downloadText(`${baseFileName()}_ei.json`, JSON.stringify(payload, null, 2), "application/json");
@@ -1783,6 +2077,7 @@ function appendEiBandTable(rows, analysis, bands) {
   rows.push(["Total", ...bands.map((band) => `${band.start}-${band.end}`)]);
   rows.push([analysis.total, ...pixelsByBand]);
   rows.push(["%", ...pixelsByBand.map((pixels) => (analysis.total ? roundForSheet((pixels / analysis.total) * 100, 2) : 0))]);
+  if (analysis.ignored) rows.push(["Ignorados", analysis.ignored]);
 }
 
 function bandPixelCount(hist, band) {
@@ -1794,16 +2089,18 @@ function bandPixelCount(hist, band) {
 function aggregateHistogramAnalysis(analyses) {
   const hist = Array(256).fill(0);
   let total = 0;
+  let ignored = 0;
   analyses.forEach((analysis) => {
-    if (!analysis?.total) return;
-    total += analysis.total;
+    if (!analysis) return;
+    total += analysis.total || 0;
+    ignored += analysis.ignored || 0;
     for (let value = 0; value <= 255; value += 1) hist[value] += analysis.hist[value] || 0;
   });
-  return { hist, total };
+  return { hist, total, ignored };
 }
 
 function buildRoiRows() {
-  const rows = [["image", "image_source", "roi", "type", "total_pixels", "mean_ei", "median_ei", "sd_ei", "min_ei", "max_ei"]];
+  const rows = [["image", "image_source", "roi", "type", "total_pixels", "ignored_pixels", "mean_ei", "median_ei", "sd_ei", "min_ei", "max_ei"]];
   allRois().forEach(({ image, roi }) => {
     rows.push([
       image.name,
@@ -1811,6 +2108,7 @@ function buildRoiRows() {
       roi.label,
       roi.type,
       roi.analysis.total,
+      roi.analysis.ignored || 0,
       roundForSheet(roi.analysis.mean, 4),
       roi.analysis.median,
       roundForSheet(roi.analysis.sd, 4),
@@ -2050,6 +2348,7 @@ function downloadBlob(filename, blob) {
 
 els.openFileButton.addEventListener("click", () => els.fileInput.click());
 els.demoButton.addEventListener("click", loadDemoImage);
+els.autoRectusButton.addEventListener("click", createAutoRectusRoi);
 els.languageSelect.addEventListener("change", () => {
   state.language = els.languageSelect.value;
   updateUi();
@@ -2061,6 +2360,32 @@ els.measureUnit.addEventListener("change", () => {
 els.pixelSpacing.addEventListener("change", () => {
   state.pixelSpacingMm = Math.max(0.0001, Number(els.pixelSpacing.value) || 1);
   updateUi();
+});
+els.ignoreColoredPixels.addEventListener("change", () => {
+  state.ignoreColoredPixels = els.ignoreColoredPixels.checked;
+  updateAnalysesAfterFilterChange();
+});
+els.colorTolerance.addEventListener("change", () => {
+  state.colorTolerance = clamp(Number(els.colorTolerance.value) || 0, 0, 80);
+  updateAnalysesAfterFilterChange();
+});
+els.addIgnoredColorButton.addEventListener("click", () => {
+  addIgnoredColor(colorFromHex(els.ignoredColorInput.value));
+});
+els.pickColorButton.addEventListener("click", () => {
+  state.pickingIgnoreColor = !state.pickingIgnoreColor;
+  state.activeTool = "pan";
+  updateUi();
+});
+els.clearIgnoredColorsButton.addEventListener("click", () => {
+  state.ignoredColors = [];
+  updateAnalysesAfterFilterChange();
+});
+els.ignoredColorsList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-color]");
+  if (!button) return;
+  state.ignoredColors.splice(Number(button.dataset.removeColor), 1);
+  updateAnalysesAfterFilterChange();
 });
 els.fileInput.addEventListener("change", (event) => {
   const files = [...event.target.files];
@@ -2076,6 +2401,7 @@ els.imageList.addEventListener("click", (event) => {
 
 els.toolButtons.forEach((button) => {
   button.addEventListener("click", () => {
+    state.pickingIgnoreColor = false;
     state.activeTool = button.dataset.tool;
     updateUi();
   });
@@ -2147,9 +2473,18 @@ els.exportExcelButton.addEventListener("click", exportExcel);
 
 els.viewer.addEventListener("pointerdown", (event) => {
   if (!state.image) return;
-  els.viewer.setPointerCapture(event.pointerId);
   const screen = pointerPoint(event);
   const image = screenToImage(screen);
+
+  if (state.pickingIgnoreColor) {
+    sampleIgnoredColor(image);
+    state.pickingIgnoreColor = false;
+    updateUi();
+    draw();
+    return;
+  }
+
+  els.viewer.setPointerCapture(event.pointerId);
   state.pointer = { screen, image, view: { ...state.view } };
 
   if (state.activeTool === "pan") {
