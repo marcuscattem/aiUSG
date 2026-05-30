@@ -7,6 +7,17 @@ const els = {
   demoButton: document.querySelector("#demoButton"),
   undoButton: document.querySelector("#undoButton"),
   exportExcelButton: document.querySelector("#exportExcelButton"),
+  bandSettingsButton: document.querySelector("#bandSettingsButton"),
+  bandSettingsPanel: document.querySelector("#bandSettingsPanel"),
+  closeBandSettingsButton: document.querySelector("#closeBandSettingsButton"),
+  customBandStep: document.querySelector("#customBandStep"),
+  bandColorEditor: document.querySelector("#bandColorEditor"),
+  resetBandColorsButton: document.querySelector("#resetBandColorsButton"),
+  autoRoiPopup: document.querySelector("#autoRoiPopup"),
+  roiQuickPanel: document.querySelector("#roiQuickPanel"),
+  roiQuickHandle: document.querySelector("#roiQuickHandle"),
+  roiQuickContent: document.querySelector("#roiQuickContent"),
+  closeRoiQuickButton: document.querySelector("#closeRoiQuickButton"),
   exportBandsOption: document.querySelector("#exportBandsOption"),
   exportRoisOption: document.querySelector("#exportRoisOption"),
   exportHistogramOption: document.querySelector("#exportHistogramOption"),
@@ -50,13 +61,19 @@ const histCtx = els.hist.getContext("2d");
 
 const roiColors = ["#0f766e", "#d97706", "#2563eb", "#9333ea", "#be123c", "#4d7c0f"];
 const measureColors = ["#2563eb", "#d97706", "#9333ea", "#be123c", "#4d7c0f", "#0f766e"];
-const bandColors = ["#144b5a", "#0f766e", "#d97706", "#c2410c", "#7f1d1d", "#4338ca", "#7c3aed", "#be185d", "#475569", "#111827", "#0891b2"];
+const defaultBandColors = ["#144b5a", "#0f766e", "#d97706", "#c2410c", "#7f1d1d", "#4338ca", "#7c3aed", "#be185d", "#475569", "#111827", "#0891b2"];
 
 const i18n = {
   pt: {
     openImage: "Abrir imagem",
     undo: "Desfazer",
     selectEdit: "Selecionar, mover e editar",
+    bandSettings: "Configurar bandas",
+    customBandStep: "Segmentação",
+    resetBandColors: "Restaurar cores",
+    autoRoiPopup: "Mostrar janela automática do ROI",
+    quickRoi: "ROI rápido",
+    remainderBands: "Restante",
     exportExcel: "Excel",
     exportOptions: "Exportar",
     exportBands: "Bandas EI",
@@ -115,6 +132,12 @@ const i18n = {
     openImage: "Open image",
     undo: "Undo",
     selectEdit: "Select, move, and edit",
+    bandSettings: "Band settings",
+    customBandStep: "Segmentation",
+    resetBandColors: "Reset colors",
+    autoRoiPopup: "Show automatic ROI window",
+    quickRoi: "Quick ROI",
+    remainderBands: "Remainder",
     exportExcel: "Excel",
     exportOptions: "Export",
     exportBands: "EI bands",
@@ -173,6 +196,12 @@ const i18n = {
     openImage: "Abrir imagen",
     undo: "Deshacer",
     selectEdit: "Seleccionar, mover y editar",
+    bandSettings: "Configurar bandas",
+    customBandStep: "Segmentación",
+    resetBandColors: "Restaurar colores",
+    autoRoiPopup: "Mostrar ventana automática del ROI",
+    quickRoi: "ROI rápido",
+    remainderBands: "Restante",
     exportExcel: "Excel",
     exportOptions: "Exportar",
     exportBands: "Bandas EI",
@@ -243,10 +272,17 @@ const state = {
   measureUnit: "px",
   pixelSpacingMm: 1,
   bandMode: 50,
+  customBandStep: null,
+  bandColors: [...defaultBandColors],
   ignoreColoredPixels: false,
   colorTolerance: 12,
   ignoredColors: [],
   pickingIgnoreColor: false,
+  bandSettingsOpen: false,
+  autoRoiPopup: true,
+  roiQuickVisible: false,
+  roiQuickPosition: { x: 620, y: 92 },
+  draggingQuickPanel: null,
   view: { scale: 1, x: 0, y: 0 },
   drawing: null,
   angleDraft: null,
@@ -261,7 +297,7 @@ function t(key) {
 
 function bandsForMode(mode) {
   const step = Number(mode);
-  if (step === 50) {
+  if (step === 50 && !state.customBandStep) {
     return [
       { start: 0, end: 50 },
       { start: 51, end: 100 },
@@ -279,6 +315,10 @@ function bandsForMode(mode) {
     start = end + 1;
   }
   return bands;
+}
+
+function currentBandColor(index) {
+  return state.bandColors[index] || defaultBandColors[index % defaultBandColors.length];
 }
 
 function formatNumber(value, digits = 1) {
@@ -974,7 +1014,7 @@ function summarizeBands(hist, total) {
       label: `${band.start}-${band.end}`,
       pixels,
       percent: total ? (pixels / total) * 100 : 0,
-      color: bandColors[index % bandColors.length],
+      color: currentBandColor(index),
     };
   });
 }
@@ -1153,6 +1193,7 @@ function finishRoi(roi) {
   state.rois.push(roi);
   state.selectedId = roi.id;
   state.image.selectedId = roi.id;
+  showRoiQuickPanel();
   updateUi();
   draw();
 }
@@ -1397,6 +1438,7 @@ function selectShape(kind, shape) {
       state.image.selectedId = null;
     }
   }
+  if (kind === "roi") showRoiQuickPanel();
 }
 
 function moveShape(shape, dx, dy) {
@@ -1504,6 +1546,9 @@ function updateUi() {
   els.ignoreColoredPixels.checked = state.ignoreColoredPixels;
   els.colorTolerance.value = state.colorTolerance;
   els.pickColorButton.textContent = state.pickingIgnoreColor ? t("pickingColor") : t("pickColor");
+  els.customBandStep.value = state.customBandStep || "";
+  els.autoRoiPopup.checked = state.autoRoiPopup;
+  els.bandSettingsPanel.classList.toggle("hidden", !state.bandSettingsOpen);
 
   els.toolButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.tool === state.activeTool);
@@ -1516,6 +1561,7 @@ function updateUi() {
   });
 
   renderBandLegend();
+  renderBandColorEditor();
   renderImageList();
   renderIgnoredColors();
   renderRoiList();
@@ -1524,6 +1570,7 @@ function updateUi() {
   renderMetrics();
   renderHistogram();
   renderBandBars();
+  renderRoiQuickPanel();
 }
 
 function renderImageList() {
@@ -1579,10 +1626,85 @@ function aggregateAnalysis(rois) {
 function renderBandLegend() {
   els.bandLegend.innerHTML = bandsForMode(state.bandMode)
     .map((band, index) => {
-      const color = bandColors[index % bandColors.length];
+      const color = currentBandColor(index);
       return `<div class="legend-row"><span class="swatch" style="background:${color}"></span>${band.start}-${band.end}</div>`;
     })
     .join("");
+}
+
+function renderBandColorEditor() {
+  const bands = bandsForMode(state.bandMode);
+  els.bandColorEditor.innerHTML = bands
+    .map((band, index) => {
+      const color = currentBandColor(index);
+      return `
+        <label class="band-color-row">
+          <span><span class="swatch" style="background:${color}"></span>${band.start}-${band.end}</span>
+          <input type="color" value="${color}" data-band-color-index="${index}" />
+        </label>
+      `;
+    })
+    .join("");
+}
+
+function renderRoiQuickPanel() {
+  const roi = selectedRoi();
+  if (!state.roiQuickVisible || !roi?.analysis?.total) {
+    els.roiQuickPanel.classList.add("hidden");
+    return;
+  }
+
+  const summary = quickBandSummary(roi.analysis);
+  const width = els.roiQuickPanel.offsetWidth || 270;
+  const height = els.roiQuickPanel.offsetHeight || 180;
+  state.roiQuickPosition = {
+    x: clamp(state.roiQuickPosition.x, 8, Math.max(8, window.innerWidth - width - 8)),
+    y: clamp(state.roiQuickPosition.y, 8, Math.max(8, window.innerHeight - height - 8)),
+  };
+  els.roiQuickPanel.style.left = `${state.roiQuickPosition.x}px`;
+  els.roiQuickPanel.style.top = `${state.roiQuickPosition.y}px`;
+  els.roiQuickPanel.classList.remove("hidden");
+  els.roiQuickContent.innerHTML = `
+    <div class="quick-metric"><span>ROI</span><strong>${roi.label}</strong></div>
+    <div class="quick-metric"><span>${t("meanEi")}</span><strong>${formatNumber(roi.analysis.mean, 2)}</strong></div>
+    ${summary
+      .map(
+        (item) => `
+          <div class="quick-band">
+            <span><span class="swatch" style="background:${item.color}"></span>${item.label}</span>
+            <strong>${formatNumber(item.percent, 2)}%</strong>
+            <small>${formatInteger(item.pixels)} px</small>
+          </div>
+        `,
+      )
+      .join("")}
+  `;
+}
+
+function quickBandSummary(analysis) {
+  const bands = analysis.bands || [];
+  const first = bands[0] || null;
+  const second = bands[1] || null;
+  const restPixels = bands.slice(2).reduce((sum, band) => sum + band.pixels, 0);
+  const restPercent = analysis.total ? (restPixels / analysis.total) * 100 : 0;
+  return [
+    first && { label: first.label, pixels: first.pixels, percent: first.percent, color: first.color },
+    second && { label: second.label, pixels: second.pixels, percent: second.percent, color: second.color },
+    bands.length > 2 && { label: t("remainderBands"), pixels: restPixels, percent: restPercent, color: "#64748b" },
+  ].filter(Boolean);
+}
+
+function showRoiQuickPanel() {
+  if (!state.autoRoiPopup || !selectedRoi()?.analysis?.total) return;
+  state.roiQuickVisible = true;
+}
+
+function applyCustomBandStep() {
+  const value = Math.round(Number(els.customBandStep.value) || 0);
+  state.customBandStep = value >= 1 && value <= 255 ? value : null;
+  if (state.customBandStep) state.bandMode = state.customBandStep;
+  updateAllAnalyses();
+  updateUi();
 }
 
 function renderIgnoredColors() {
@@ -1702,7 +1824,7 @@ function renderHistogram() {
     const bandIndex = bands.findIndex((band) => i >= band.start && i <= band.end);
     const x = pad + (i / 256) * chartWidth;
     const h = max ? (hist[i] / max) * chartHeight : 0;
-    histCtx.fillStyle = bandColors[Math.max(0, bandIndex) % bandColors.length];
+    histCtx.fillStyle = currentBandColor(Math.max(0, bandIndex));
     histCtx.fillRect(x, pad + chartHeight - h, Math.max(1, chartWidth / 256), h);
   }
 
@@ -1887,6 +2009,7 @@ function exportJson() {
     measurementUnit: state.measureUnit,
     pixelSpacingMm: state.pixelSpacingMm,
     bandMode: state.bandMode,
+    bandColors: state.bandColors,
     colorFilter: {
       ignoreColoredPixels: state.ignoreColoredPixels,
       colorTolerance: state.colorTolerance,
@@ -2245,6 +2368,51 @@ els.ignoredColorsList.addEventListener("click", (event) => {
   state.ignoredColors.splice(Number(button.dataset.removeColor), 1);
   updateAnalysesAfterFilterChange();
 });
+els.bandSettingsButton.addEventListener("click", () => {
+  state.bandSettingsOpen = !state.bandSettingsOpen;
+  updateUi();
+});
+els.closeBandSettingsButton.addEventListener("click", () => {
+  state.bandSettingsOpen = false;
+  updateUi();
+});
+els.customBandStep.addEventListener("change", () => {
+  applyCustomBandStep();
+});
+els.customBandStep.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") applyCustomBandStep();
+});
+els.bandColorEditor.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-band-color-index]");
+  if (!input) return;
+  state.bandColors[Number(input.dataset.bandColorIndex)] = input.value;
+  updateAllAnalyses();
+  updateUi();
+});
+els.resetBandColorsButton.addEventListener("click", () => {
+  state.bandColors = [...defaultBandColors];
+  updateAllAnalyses();
+  updateUi();
+});
+els.autoRoiPopup.addEventListener("change", () => {
+  state.autoRoiPopup = els.autoRoiPopup.checked;
+  if (!state.autoRoiPopup) state.roiQuickVisible = false;
+  updateUi();
+});
+els.closeRoiQuickButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  state.roiQuickVisible = false;
+  updateUi();
+});
+els.roiQuickHandle.addEventListener("pointerdown", (event) => {
+  if (event.target.closest("button")) return;
+  state.draggingQuickPanel = {
+    pointerId: event.pointerId,
+    dx: event.clientX - state.roiQuickPosition.x,
+    dy: event.clientY - state.roiQuickPosition.y,
+  };
+  els.roiQuickHandle.setPointerCapture(event.pointerId);
+});
 els.fileInput.addEventListener("change", (event) => {
   const files = [...event.target.files];
   if (files.length) handleFiles(files);
@@ -2268,6 +2436,7 @@ els.toolButtons.forEach((button) => {
 els.bandButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.bandMode = Number(button.dataset.bandMode);
+    state.customBandStep = null;
     updateAllAnalyses();
     updateUi();
   });
@@ -2282,6 +2451,7 @@ els.roiList.addEventListener("click", (event) => {
     state.image.selectedId = state.selectedId;
     state.image.selectedMeasureId = null;
   }
+  showRoiQuickPanel();
   updateUi();
   draw();
 });
@@ -2593,6 +2763,22 @@ window.addEventListener("keydown", (event) => {
   }
   updateUi();
   draw();
+});
+
+window.addEventListener("pointermove", (event) => {
+  if (!state.draggingQuickPanel) return;
+  const width = els.roiQuickPanel.offsetWidth || 260;
+  const height = els.roiQuickPanel.offsetHeight || 180;
+  state.roiQuickPosition = {
+    x: clamp(event.clientX - state.draggingQuickPanel.dx, 8, Math.max(8, window.innerWidth - width - 8)),
+    y: clamp(event.clientY - state.draggingQuickPanel.dy, 8, Math.max(8, window.innerHeight - height - 8)),
+  };
+  renderRoiQuickPanel();
+});
+
+window.addEventListener("pointerup", (event) => {
+  if (!state.draggingQuickPanel) return;
+  if (state.draggingQuickPanel.pointerId === event.pointerId) state.draggingQuickPanel = null;
 });
 
 window.addEventListener("resize", resizeViewer);

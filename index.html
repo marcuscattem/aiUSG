@@ -113,9 +113,12 @@
 
           <section class="panel-section">
             <h2 data-i18n="eiBands">Bandas EI</h2>
-            <div class="segmented" role="group" aria-label="Bandas de ecointensidade">
-              <button class="segment active" data-band-mode="50" type="button">50</button>
-              <button class="segment" data-band-mode="25" type="button">25</button>
+            <div class="band-control-row">
+              <div class="segmented" role="group" aria-label="Bandas de ecointensidade">
+                <button class="segment active" data-band-mode="50" type="button">50</button>
+                <button class="segment" data-band-mode="25" type="button">25</button>
+              </div>
+              <button id="bandSettingsButton" class="icon-button" type="button" title="Configurar bandas" data-i18n-title="bandSettings">⚙</button>
             </div>
             <div id="bandLegend" class="band-legend"></div>
           </section>
@@ -245,6 +248,33 @@
           </section>
         </aside>
       </main>
+
+      <div id="bandSettingsPanel" class="floating-panel settings-panel hidden" role="dialog" aria-label="Configurações de bandas">
+        <div class="floating-head">
+          <strong data-i18n="bandSettings">Configurar bandas</strong>
+          <button id="closeBandSettingsButton" type="button" title="Fechar">×</button>
+        </div>
+        <div class="settings-body">
+          <label class="check-row">
+            <input id="autoRoiPopup" type="checkbox" checked />
+            <span data-i18n="autoRoiPopup">Mostrar janela automática do ROI</span>
+          </label>
+          <div class="field-row">
+            <label for="customBandStep" data-i18n="customBandStep">Segmentação</label>
+            <input id="customBandStep" type="number" min="1" max="255" step="1" placeholder="25/50" />
+          </div>
+          <div id="bandColorEditor" class="band-color-editor"></div>
+          <button id="resetBandColorsButton" type="button" data-i18n="resetBandColors">Restaurar cores</button>
+        </div>
+      </div>
+
+      <div id="roiQuickPanel" class="floating-panel roi-quick-panel hidden">
+        <div id="roiQuickHandle" class="floating-head">
+          <strong data-i18n="quickRoi">ROI rápido</strong>
+          <button id="closeRoiQuickButton" type="button" title="Fechar">×</button>
+        </div>
+        <div id="roiQuickContent" class="quick-content"></div>
+      </div>
     </div>
 
     <script src="./app.js"></script>
