@@ -7,7 +7,6 @@ const els = {
   demoButton: document.querySelector("#demoButton"),
   undoButton: document.querySelector("#undoButton"),
   exportExcelButton: document.querySelector("#exportExcelButton"),
-  autoRectusButton: document.querySelector("#autoRectusButton"),
   exportBandsOption: document.querySelector("#exportBandsOption"),
   exportRoisOption: document.querySelector("#exportRoisOption"),
   exportHistogramOption: document.querySelector("#exportHistogramOption"),
@@ -78,8 +77,6 @@ const i18n = {
     noImages: "Sem imagens",
     navigation: "Navegação",
     roiTools: "Ferramentas de ROI",
-    autoRectus: "Auto reto femoral",
-    autoRectusFail: "Não foi possível sugerir um retângulo nesta imagem.",
     measureTools: "Ferramentas de medida",
     radiusPx: "Raio px",
     fixedCircle: "Círculo com raio fixo",
@@ -138,8 +135,6 @@ const i18n = {
     noImages: "No images",
     navigation: "Navigation",
     roiTools: "ROI tools",
-    autoRectus: "Auto rectus femoris",
-    autoRectusFail: "Could not suggest a rectangle for this image.",
     measureTools: "Measurement tools",
     radiusPx: "Radius px",
     fixedCircle: "Fixed-radius circle",
@@ -198,8 +193,6 @@ const i18n = {
     noImages: "Sin imágenes",
     navigation: "Navegación",
     roiTools: "Herramientas ROI",
-    autoRectus: "Auto recto femoral",
-    autoRectusFail: "No fue posible sugerir un rectángulo en esta imagen.",
     measureTools: "Herramientas de medida",
     radiusPx: "Radio px",
     fixedCircle: "Círculo con radio fijo",
@@ -1050,139 +1043,6 @@ function updateAnalysesAfterFilterChange() {
   draw();
 }
 
-function createAutoRectusRoi() {
-  if (!state.image) return;
-  const geometry = suggestRectusRectangle(state.image);
-  if (!geometry) {
-    window.alert(t("autoRectusFail"));
-    return;
-  }
-  const roi = createRoi("rect", geometry);
-  roi.label = `RF auto ${state.rois.length + 1}`;
-  finishRoi(roi);
-  state.activeTool = "pan";
-  updateUi();
-}
-
-function suggestRectusRectangle(image) {
-  if (!image?.gray?.length) return null;
-  const cell = Math.max(4, Math.min(10, Math.round(Math.min(image.width, image.height) / 95)));
-  const cols = Math.floor(image.width / cell);
-  const rows = Math.floor(image.height / cell);
-  if (cols < 8 || rows < 6) return null;
-
-  const values = centralGrayscaleValues(image);
-  if (!values.length) return null;
-  const low = percentile(values, 0.12);
-  const high = percentile(values, 0.86);
-  const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
-
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      grid[row][col] = isRectusCellCandidate(image, col * cell, row * cell, cell, low, high);
-    }
-  }
-
-  const rect = largestRectInGrid(grid);
-  if (!rect || rect.w < 4 || rect.h < 3) return fallbackRectusRectangle(image);
-
-  const pad = cell;
-  const x = clamp(rect.x * cell + pad, 0, image.width - 1);
-  const y = clamp(rect.y * cell + pad, 0, image.height - 1);
-  const w = clamp(rect.w * cell - pad * 2, 1, image.width - x);
-  const h = clamp(rect.h * cell - pad * 2, 1, image.height - y);
-  if (w < image.width * 0.08 || h < image.height * 0.06) return fallbackRectusRectangle(image);
-  return { x, y, w, h };
-}
-
-function centralGrayscaleValues(image) {
-  const values = [];
-  const x0 = Math.floor(image.width * 0.05);
-  const x1 = Math.ceil(image.width * 0.95);
-  const y0 = Math.floor(image.height * 0.08);
-  const y1 = Math.ceil(image.height * 0.92);
-  for (let y = y0; y < y1; y += 2) {
-    for (let x = x0; x < x1; x += 2) {
-      const index = y * image.width + x;
-      const rgb = image.rgb ? pixelRgb(image, index) : null;
-      if (rgb && isColoredPixel(rgb)) continue;
-      values.push(image.gray[index]);
-    }
-  }
-  return values;
-}
-
-function isRectusCellCandidate(image, x0, y0, size, low, high) {
-  let valid = 0;
-  let total = 0;
-  let sum = 0;
-  const x1 = Math.min(image.width, x0 + size);
-  const y1 = Math.min(image.height, y0 + size);
-
-  for (let y = y0; y < y1; y += 1) {
-    for (let x = x0; x < x1; x += 1) {
-      const index = y * image.width + x;
-      const value = image.gray[index];
-      const rgb = image.rgb ? pixelRgb(image, index) : null;
-      if (rgb && isColoredPixel(rgb)) continue;
-      total += 1;
-      sum += value;
-      if (value >= low && value <= high) valid += 1;
-    }
-  }
-
-  if (!total) return false;
-  const mean = sum / total;
-  return valid / total >= 0.56 && mean >= low && mean <= high;
-}
-
-function largestRectInGrid(grid) {
-  const rows = grid.length;
-  const cols = grid[0]?.length || 0;
-  const heights = Array(cols).fill(0);
-  let best = null;
-  let bestScore = 0;
-
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) heights[col] = grid[row][col] ? heights[col] + 1 : 0;
-    const stack = [];
-    for (let col = 0; col <= cols; col += 1) {
-      const current = col === cols ? 0 : heights[col];
-      while (stack.length && current < heights[stack.at(-1)]) {
-        const top = stack.pop();
-        const height = heights[top];
-        const left = stack.length ? stack.at(-1) + 1 : 0;
-        const width = col - left;
-        const x = left;
-        const y = row - height + 1;
-        const area = width * height;
-        const centerBias = 1 - 0.22 * (Math.abs((x + width / 2) / cols - 0.5) + Math.abs((y + height / 2) / rows - 0.5));
-        const score = area * centerBias;
-        if (width >= 4 && height >= 3 && score > bestScore) {
-          best = { x, y, w: width, h: height };
-          bestScore = score;
-        }
-      }
-      stack.push(col);
-    }
-  }
-  return best;
-}
-
-function fallbackRectusRectangle(image) {
-  return {
-    x: Math.round(image.width * 0.25),
-    y: Math.round(image.height * 0.34),
-    w: Math.round(image.width * 0.5),
-    h: Math.round(image.height * 0.24),
-  };
-}
-
-function percentile(values, ratio) {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * ratio)))];
-}
-
 function boundsForRoi(roi, width, height) {
   let x0 = 0;
   let y0 = 0;
@@ -1635,7 +1495,6 @@ function updateUi() {
     ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)`
     : `${t("noImageLoaded")} · GUST`;
   els.exportExcelButton.disabled = !hasExcelExportData();
-  els.autoRectusButton.disabled = !state.image;
   els.deleteRoiButton.disabled = !selectedRoi();
   els.deleteMeasureButton.disabled = !selectedMeasurement();
   updateUndoButton();
@@ -2348,7 +2207,6 @@ function downloadBlob(filename, blob) {
 
 els.openFileButton.addEventListener("click", () => els.fileInput.click());
 els.demoButton.addEventListener("click", loadDemoImage);
-els.autoRectusButton.addEventListener("click", createAutoRectusRoi);
 els.languageSelect.addEventListener("change", () => {
   state.language = els.languageSelect.value;
   updateUi();
