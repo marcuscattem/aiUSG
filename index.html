@@ -73,6 +73,10 @@
               <input id="fixedCircle" type="checkbox" />
               <span data-i18n="fixedCircle">Círculo com raio fixo</span>
             </label>
+            <label class="check-row">
+              <input id="disableRoiQuick" type="checkbox" />
+              <span data-i18n="disableRoiQuick">Desativar ROI rápido</span>
+            </label>
           </section>
 
           <section class="panel-section">
@@ -255,10 +259,6 @@
           <button id="closeBandSettingsButton" type="button" title="Fechar">×</button>
         </div>
         <div class="settings-body">
-          <label class="check-row">
-            <input id="autoRoiPopup" type="checkbox" checked />
-            <span data-i18n="autoRoiPopup">Mostrar janela automática do ROI</span>
-          </label>
           <div class="field-row">
             <label for="customBandStep" data-i18n="customBandStep">Segmentação</label>
             <input id="customBandStep" type="number" min="1" max="255" step="1" placeholder="25/50" />

@@ -13,7 +13,7 @@ const els = {
   customBandStep: document.querySelector("#customBandStep"),
   bandColorEditor: document.querySelector("#bandColorEditor"),
   resetBandColorsButton: document.querySelector("#resetBandColorsButton"),
-  autoRoiPopup: document.querySelector("#autoRoiPopup"),
+  disableRoiQuick: document.querySelector("#disableRoiQuick"),
   roiQuickPanel: document.querySelector("#roiQuickPanel"),
   roiQuickHandle: document.querySelector("#roiQuickHandle"),
   roiQuickContent: document.querySelector("#roiQuickContent"),
@@ -72,6 +72,7 @@ const i18n = {
     customBandStep: "Segmentação",
     resetBandColors: "Restaurar cores",
     autoRoiPopup: "Mostrar janela automática do ROI",
+    disableRoiQuick: "Desativar ROI rápido",
     quickRoi: "ROI rápido",
     remainderBands: "Restante",
     exportExcel: "Excel",
@@ -137,6 +138,7 @@ const i18n = {
     customBandStep: "Segmentation",
     resetBandColors: "Reset colors",
     autoRoiPopup: "Show automatic ROI window",
+    disableRoiQuick: "Disable quick ROI",
     quickRoi: "Quick ROI",
     remainderBands: "Remainder",
     exportExcel: "Excel",
@@ -202,6 +204,7 @@ const i18n = {
     customBandStep: "Segmentación",
     resetBandColors: "Restaurar colores",
     autoRoiPopup: "Mostrar ventana automática del ROI",
+    disableRoiQuick: "Desactivar ROI rápido",
     quickRoi: "ROI rápido",
     remainderBands: "Restante",
     exportExcel: "Excel",
@@ -1692,7 +1695,7 @@ function updateUi() {
   els.colorTolerance.value = state.colorTolerance;
   els.pickColorButton.textContent = state.pickingIgnoreColor ? t("pickingColor") : t("pickColor");
   els.customBandStep.value = state.customBandStep || "";
-  els.autoRoiPopup.checked = state.autoRoiPopup;
+  els.disableRoiQuick.checked = !state.autoRoiPopup;
   els.bandSettingsPanel.classList.toggle("hidden", !state.bandSettingsOpen);
 
   els.toolButtons.forEach((button) => {
@@ -2573,8 +2576,8 @@ els.resetBandColorsButton.addEventListener("click", () => {
   updateAllAnalyses();
   updateUi();
 });
-els.autoRoiPopup.addEventListener("change", () => {
-  state.autoRoiPopup = els.autoRoiPopup.checked;
+els.disableRoiQuick.addEventListener("change", () => {
+  state.autoRoiPopup = !els.disableRoiQuick.checked;
   if (!state.autoRoiPopup) state.roiQuickVisible = false;
   updateUi();
 });
