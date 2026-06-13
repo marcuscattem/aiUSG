@@ -98,6 +98,7 @@ const i18n = {
     radiusPx: "Raio px",
     fixedCircle: "Círculo com raio fixo",
     scale: "Escala mm/px",
+    scaleAuto: "escala DICOM",
     unit: "Unidade",
     eiBands: "Bandas EI",
     noRois: "Sem ROIs",
@@ -162,6 +163,7 @@ const i18n = {
     radiusPx: "Radius px",
     fixedCircle: "Fixed-radius circle",
     scale: "Scale mm/px",
+    scaleAuto: "DICOM scale",
     unit: "Unit",
     eiBands: "EI bands",
     noRois: "No ROIs",
@@ -226,6 +228,7 @@ const i18n = {
     radiusPx: "Radio px",
     fixedCircle: "Círculo con radio fijo",
     scale: "Escala mm/px",
+    scaleAuto: "escala DICOM",
     unit: "Unidad",
     eiBands: "Bandas EI",
     noRois: "Sin ROIs",
@@ -353,6 +356,7 @@ function setActiveImage(id, shouldFit = true) {
   state.angleDraft = null;
   state.pickingIgnoreColor = false;
   state.pointer = null;
+  if (state.image?.pixelSpacingMm) state.pixelSpacingMm = state.image.pixelSpacingMm;
   if (shouldFit) fitImage();
   updateUi();
   draw();
@@ -622,11 +626,9 @@ async function handleFiles(files) {
   for (const file of files) {
     try {
       const lowerName = file.name.toLowerCase();
-      const canvas =
-        lowerName.endsWith(".dcm") || lowerName.endsWith(".dicom")
-          ? await loadDicomCanvas(file)
-          : await loadRasterCanvas(file);
-      const image = addImageFromCanvas(canvas, file.name, lowerName.endsWith(".dcm") || lowerName.endsWith(".dicom") ? "dicom" : "image");
+      const isDicom = lowerName.endsWith(".dcm") || lowerName.endsWith(".dicom") || file.type === "application/dicom";
+      const loaded = isDicom ? await loadDicomImage(file) : { canvas: await loadRasterCanvas(file), metadata: {} };
+      const image = addImageFromCanvas(loaded.canvas, file.name, isDicom ? "dicom" : "image", loaded.metadata);
       if (!firstNewImageId) firstNewImageId = image.id;
     } catch (error) {
       failures.push(`${file.name}: ${error.message}`);
@@ -658,12 +660,12 @@ function loadRasterCanvas(file) {
   });
 }
 
-async function loadDicomCanvas(file) {
+async function loadDicomImage(file) {
   const buffer = await file.arrayBuffer();
   return parseDicomToCanvas(buffer);
 }
 
-function addImageFromCanvas(canvas, name, source = "image") {
+function addImageFromCanvas(canvas, name, source = "image", metadata = {}) {
   const imageCtx = canvas.getContext("2d", { willReadFrequently: true });
   const data = imageCtx.getImageData(0, 0, canvas.width, canvas.height).data;
   const gray = new Uint8Array(canvas.width * canvas.height);
@@ -685,6 +687,11 @@ function addImageFromCanvas(canvas, name, source = "image") {
     height: canvas.height,
     gray,
     rgb,
+    pixelSpacingMm: Number.isFinite(metadata.pixelSpacingMm) ? metadata.pixelSpacingMm : 1,
+    pixelSpacingXmm: Number.isFinite(metadata.pixelSpacingXmm) ? metadata.pixelSpacingXmm : null,
+    pixelSpacingYmm: Number.isFinite(metadata.pixelSpacingYmm) ? metadata.pixelSpacingYmm : null,
+    scaleSource: metadata.scaleSource || "",
+    dicomMetadata: metadata,
     rois: [],
     measurements: [],
     selectedId: null,
@@ -798,6 +805,7 @@ function parseDicomToCanvas(buffer) {
   const windowWidth = decimalTag(tags, 0x0028, 0x1051);
   const slope = decimalTag(tags, 0x0028, 0x1053) || 1;
   const intercept = decimalTag(tags, 0x0028, 0x1052) || 0;
+  const spacing = extractDicomPixelSpacing(tags);
 
   if (!rows || !columns) throw new Error("linhas/colunas DICOM ausentes");
   if (samplesPerPixel !== 1) throw new Error("somente DICOM monocromático é suportado agora");
@@ -850,7 +858,88 @@ function parseDicomToCanvas(buffer) {
   }
 
   canvasCtx.putImageData(image, 0, 0);
-  return canvas;
+  return {
+    canvas,
+    metadata: {
+      rows,
+      columns,
+      photometric,
+      transferSyntax,
+      pixelSpacingMm: spacing?.mmPerPixel || null,
+      pixelSpacingXmm: spacing?.x || null,
+      pixelSpacingYmm: spacing?.y || null,
+      scaleSource: spacing?.source || "",
+    },
+  };
+}
+
+function extractDicomPixelSpacing(tags) {
+  const candidates = [
+    { group: 0x0028, element: 0x0030, source: "Pixel Spacing" },
+    { group: 0x0018, element: 0x1164, source: "Imager Pixel Spacing" },
+    { group: 0x0018, element: 0x2010, source: "Nominal Scanned Pixel Spacing" },
+  ];
+
+  for (const candidate of candidates) {
+    const values = decimalValuesTag(tags, candidate.group, candidate.element);
+    if (values.length >= 2 && values.every((value) => value > 0)) {
+      return spacingRecord(values[1], values[0], candidate.source);
+    }
+  }
+
+  return ultrasoundRegionSpacing(tags);
+}
+
+function spacingRecord(x, y, source) {
+  return {
+    x,
+    y,
+    mmPerPixel: (x + y) / 2,
+    source,
+  };
+}
+
+function ultrasoundRegionSpacing(tags) {
+  const region = tag(tags, 0x0018, 0x6011);
+  if (!region?.bytes?.length) return null;
+  const nested = new Map();
+  const regionBuffer = region.bytes.buffer.slice(region.bytes.byteOffset, region.bytes.byteOffset + region.bytes.byteLength);
+  const regionView = new DataView(regionBuffer);
+  let sequenceOffset = 0;
+
+  while (sequenceOffset + 8 <= regionBuffer.byteLength) {
+    const group = regionView.getUint16(sequenceOffset, region.littleEndian);
+    const element = regionView.getUint16(sequenceOffset + 2, region.littleEndian);
+    const length = regionView.getUint32(sequenceOffset + 4, region.littleEndian);
+    if (group !== 0xfffe || element !== 0xe000) break;
+    const itemEnd =
+      length === 0xffffffff
+        ? findDelimitationOffset(regionBuffer, sequenceOffset + 8, region.littleEndian, 0xe00d, 0xe0dd)
+        : Math.min(regionBuffer.byteLength, sequenceOffset + 8 + length);
+    let itemOffset = sequenceOffset + 8;
+    while (itemOffset + 8 <= itemEnd) {
+      const item = readExplicitElement(regionView, regionBuffer, itemOffset, region.littleEndian);
+      if (!item || item.nextOffset > itemEnd) break;
+      nested.set(tagKey(item.group, item.element), item);
+      itemOffset = item.nextOffset;
+    }
+    sequenceOffset = length === 0xffffffff ? skipDelimitation(regionBuffer, itemEnd, region.littleEndian) : itemEnd + (length % 2);
+  }
+
+  const unitsX = numberTag(nested, 0x0018, 0x6024);
+  const unitsY = numberTag(nested, 0x0018, 0x6026);
+  const deltaX = decimalTag(nested, 0x0018, 0x602c);
+  const deltaY = decimalTag(nested, 0x0018, 0x602e);
+  if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return null;
+  const x = physicalUnitsToMm(deltaX, unitsX);
+  const y = physicalUnitsToMm(deltaY, unitsY);
+  if (!x || !y) return null;
+  return spacingRecord(Math.abs(x), Math.abs(y), "Ultrasound Region Calibration");
+}
+
+function physicalUnitsToMm(delta, units) {
+  if (units === 3) return Math.abs(delta) * 10;
+  return null;
 }
 
 function readExplicitElement(view, buffer, offset, littleEndian) {
@@ -873,8 +962,10 @@ function readImplicitElement(view, buffer, offset, littleEndian) {
 }
 
 function elementRecord(group, element, vr, length, valueOffset, buffer, littleEndian) {
-  const safeLength = length === 0xffffffff ? 0 : length;
-  const nextOffset = valueOffset + safeLength + (safeLength % 2);
+  const undefinedLength = length === 0xffffffff;
+  const contentEnd = undefinedLength ? findDelimitationOffset(buffer, valueOffset, littleEndian, 0xe0dd) : valueOffset + length;
+  const safeLength = Math.max(0, contentEnd - valueOffset);
+  const nextOffset = undefinedLength ? skipDelimitation(buffer, contentEnd, littleEndian) : valueOffset + safeLength + (safeLength % 2);
   if (nextOffset > buffer.byteLength && length !== 0xffffffff) return null;
   const bytes = safeLength ? new Uint8Array(buffer, valueOffset, safeLength) : new Uint8Array();
   return {
@@ -890,6 +981,33 @@ function elementRecord(group, element, vr, length, valueOffset, buffer, littleEn
   };
 }
 
+function findDelimitationOffset(buffer, start, littleEndian, ...elements) {
+  const bytes = new Uint8Array(buffer);
+  const wanted = new Set(elements);
+  for (let offset = start; offset + 8 <= buffer.byteLength; offset += 1) {
+    const isGroup = littleEndian
+      ? bytes[offset] === 0xfe && bytes[offset + 1] === 0xff
+      : bytes[offset] === 0xff && bytes[offset + 1] === 0xfe;
+    if (!isGroup) continue;
+    const element = littleEndian ? bytes[offset + 2] | (bytes[offset + 3] << 8) : (bytes[offset + 2] << 8) | bytes[offset + 3];
+    if (!wanted.has(element)) continue;
+    const length = littleEndian
+      ? bytes[offset + 4] | (bytes[offset + 5] << 8) | (bytes[offset + 6] << 16) | (bytes[offset + 7] << 24)
+      : (bytes[offset + 4] << 24) | (bytes[offset + 5] << 16) | (bytes[offset + 6] << 8) | bytes[offset + 7];
+    if (length === 0) return offset;
+  }
+  return buffer.byteLength;
+}
+
+function skipDelimitation(buffer, offset, littleEndian) {
+  if (offset + 8 > buffer.byteLength) return offset;
+  const view = new DataView(buffer);
+  const group = view.getUint16(offset, littleEndian);
+  const element = view.getUint16(offset + 2, littleEndian);
+  const length = view.getUint32(offset + 4, littleEndian);
+  return group === 0xfffe && [0xe00d, 0xe0dd].includes(element) ? offset + 8 + length : offset;
+}
+
 function tagKey(group, element) {
   return `${group.toString(16).padStart(4, "0")},${element.toString(16).padStart(4, "0")}`;
 }
@@ -903,9 +1021,36 @@ function stringTag(tags, group, element) {
 }
 
 function decimalTag(tags, group, element) {
-  const first = stringTag(tags, group, element).split("\\")[0];
+  const item = tag(tags, group, element);
+  if (!item) return null;
+  if (item.vr === "FD" && item.bytes.length >= 8) {
+    return new DataView(item.bytes.buffer, item.bytes.byteOffset, item.bytes.byteLength).getFloat64(0, item.littleEndian);
+  }
+  if (item.vr === "FL" && item.bytes.length >= 4) {
+    return new DataView(item.bytes.buffer, item.bytes.byteOffset, item.bytes.byteLength).getFloat32(0, item.littleEndian);
+  }
+  const first = item.text.replace(/\0/g, "").trim().split("\\")[0];
   const value = Number.parseFloat(first);
   return Number.isFinite(value) ? value : null;
+}
+
+function decimalValuesTag(tags, group, element) {
+  const item = tag(tags, group, element);
+  if (!item) return [];
+  if (item.vr === "FD" && item.bytes.length >= 8) {
+    const view = new DataView(item.bytes.buffer, item.bytes.byteOffset, item.bytes.byteLength);
+    return Array.from({ length: Math.floor(item.bytes.length / 8) }, (_, index) => view.getFloat64(index * 8, item.littleEndian));
+  }
+  if (item.vr === "FL" && item.bytes.length >= 4) {
+    const view = new DataView(item.bytes.buffer, item.bytes.byteOffset, item.bytes.byteLength);
+    return Array.from({ length: Math.floor(item.bytes.length / 4) }, (_, index) => view.getFloat32(index * 4, item.littleEndian));
+  }
+  return item.text
+    .replace(/\0/g, "")
+    .trim()
+    .split("\\")
+    .map((value) => Number.parseFloat(value))
+    .filter(Number.isFinite);
 }
 
 function numberTag(tags, group, element) {
@@ -1283,7 +1428,7 @@ function measurementBaseValue(measurement) {
   return 0;
 }
 
-function measurementDisplay(measurement) {
+function measurementDisplay(measurement, pixelSpacingMm = state.pixelSpacingMm) {
   const base = measurementBaseValue(measurement);
   if (measurement.type === "angle") {
     return { value: base, unit: "°", text: `${formatNumber(base, 2)}°`, base };
@@ -1294,10 +1439,10 @@ function measurementDisplay(measurement) {
   let value = base;
   let suffix = isArea ? "px²" : "px";
   if (unit === "mm") {
-    value = isArea ? base * state.pixelSpacingMm ** 2 : base * state.pixelSpacingMm;
+    value = isArea ? base * pixelSpacingMm ** 2 : base * pixelSpacingMm;
     suffix = isArea ? "mm²" : "mm";
   } else if (unit === "cm") {
-    value = isArea ? (base * state.pixelSpacingMm ** 2) / 100 : (base * state.pixelSpacingMm) / 10;
+    value = isArea ? (base * pixelSpacingMm ** 2) / 100 : (base * pixelSpacingMm) / 10;
     suffix = isArea ? "cm²" : "cm";
   }
   return { value, unit: suffix, text: `${formatNumber(value, 2)} ${suffix}`, base };
@@ -1534,7 +1679,7 @@ function updateUi() {
   applyTranslations();
   els.emptyState.classList.toggle("hidden", Boolean(state.image));
   els.imageMeta.textContent = state.image
-    ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)`
+    ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)${state.image.scaleSource ? ` · ${t("scaleAuto")} ${formatNumber(state.image.pixelSpacingMm, 4)} mm/px` : ""}`
     : `${t("noImageLoaded")} · GUST`;
   els.exportExcelButton.disabled = !hasExcelExportData();
   els.deleteRoiButton.disabled = !selectedRoi();
@@ -1587,11 +1732,12 @@ function renderImageList() {
       const mean = aggregateAnalysis(image.rois);
       const source = image.source === "dicom" ? "DICOM" : "IMG";
       const meanText = Number.isFinite(mean.mean) ? ` · EI ${formatNumber(mean.mean, 1)}` : "";
+      const scaleText = image.scaleSource ? ` · ${formatNumber(image.pixelSpacingMm, 4)} mm/px` : "";
       return `
         <button class="image-item ${image.id === state.activeImageId ? "active" : ""}" data-image-id="${image.id}" type="button">
           <span class="image-name">${image.name}</span>
           <span class="image-badge">${source}</span>
-          <span class="image-detail">${image.width} x ${image.height}px · ${roiCount} ROI(s)${meanText}</span>
+          <span class="image-detail">${image.width} x ${image.height}px${scaleText} · ${roiCount} ROI(s)${meanText}</span>
         </button>
       `;
     })
@@ -1966,11 +2112,15 @@ function exportMeasurementsCsv() {
     "display_value",
     "display_unit",
     "pixel_spacing_mm",
+    "pixel_spacing_x_mm",
+    "pixel_spacing_y_mm",
+    "scale_source",
   ];
   const rows = [header];
 
   allMeasurements().forEach(({ image, measurement }) => {
-    const display = measurementDisplay(measurement);
+    const spacing = image.pixelSpacingMm || state.pixelSpacingMm;
+    const display = measurementDisplay(measurement, spacing);
     rows.push([
       image.name,
       image.source,
@@ -1979,7 +2129,10 @@ function exportMeasurementsCsv() {
       measurementBaseValue(measurement).toFixed(6),
       display.value.toFixed(6),
       display.unit,
-      state.pixelSpacingMm,
+      spacing,
+      image.pixelSpacingXmm || "",
+      image.pixelSpacingYmm || "",
+      image.scaleSource || "",
     ]);
   });
 
@@ -1998,11 +2151,15 @@ function exportJson() {
       source: image.source,
       width: image.width,
       height: image.height,
+      pixelSpacingMm: image.pixelSpacingMm,
+      pixelSpacingXmm: image.pixelSpacingXmm,
+      pixelSpacingYmm: image.pixelSpacingYmm,
+      scaleSource: image.scaleSource,
       rois: image.rois,
       measurements: image.measurements.map((measurement) => ({
         ...measurement,
-        value: measurementDisplay(measurement).value,
-        unit: measurementDisplay(measurement).unit,
+        value: measurementDisplay(measurement, image.pixelSpacingMm || state.pixelSpacingMm).value,
+        unit: measurementDisplay(measurement, image.pixelSpacingMm || state.pixelSpacingMm).unit,
         baseValuePx: measurementBaseValue(measurement),
       })),
     })),
@@ -2124,9 +2281,24 @@ function buildHistogramRows() {
 }
 
 function buildMeasurementRows() {
-  const rows = [["image", "image_source", "measurement", "type", "base_value_px_or_px2", "display_value", "display_unit", "pixel_spacing_mm"]];
+  const rows = [
+    [
+      "image",
+      "image_source",
+      "measurement",
+      "type",
+      "base_value_px_or_px2",
+      "display_value",
+      "display_unit",
+      "pixel_spacing_mm",
+      "pixel_spacing_x_mm",
+      "pixel_spacing_y_mm",
+      "scale_source",
+    ],
+  ];
   allMeasurements().forEach(({ image, measurement }) => {
-    const display = measurementDisplay(measurement);
+    const spacing = image.pixelSpacingMm || state.pixelSpacingMm;
+    const display = measurementDisplay(measurement, spacing);
     rows.push([
       image.name,
       image.source,
@@ -2135,7 +2307,10 @@ function buildMeasurementRows() {
       roundForSheet(measurementBaseValue(measurement), 6),
       roundForSheet(display.value, 6),
       display.unit,
-      state.pixelSpacingMm,
+      spacing,
+      image.pixelSpacingXmm || "",
+      image.pixelSpacingYmm || "",
+      image.scaleSource || "",
     ]);
   });
   return rows;
@@ -2340,6 +2515,10 @@ els.measureUnit.addEventListener("change", () => {
 });
 els.pixelSpacing.addEventListener("change", () => {
   state.pixelSpacingMm = Math.max(0.0001, Number(els.pixelSpacing.value) || 1);
+  if (state.image) {
+    state.image.pixelSpacingMm = state.pixelSpacingMm;
+    state.image.scaleSource = "manual";
+  }
   updateUi();
 });
 els.ignoreColoredPixels.addEventListener("change", () => {
