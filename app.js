@@ -62,6 +62,14 @@ const histCtx = els.hist.getContext("2d");
 const roiColors = ["#0f766e", "#d97706", "#2563eb", "#9333ea", "#be123c", "#4d7c0f"];
 const measureColors = ["#2563eb", "#d97706", "#9333ea", "#be123c", "#4d7c0f", "#0f766e"];
 const defaultBandColors = ["#144b5a", "#0f766e", "#d97706", "#c2410c", "#7f1d1d", "#4338ca", "#7c3aed", "#be185d", "#475569", "#111827", "#0891b2"];
+const uncompressedTransferSyntaxes = new Set(["1.2.840.10008.1.2", "1.2.840.10008.1.2.1"]);
+const jpegLosslessTransferSyntaxes = new Set(["1.2.840.10008.1.2.4.57", "1.2.840.10008.1.2.4.70"]);
+const transferSyntaxNames = {
+  "1.2.840.10008.1.2": "Implicit VR Little Endian",
+  "1.2.840.10008.1.2.1": "Explicit VR Little Endian",
+  "1.2.840.10008.1.2.4.57": "JPEG Lossless",
+  "1.2.840.10008.1.2.4.70": "JPEG Lossless Selection 1",
+};
 
 const i18n = {
   pt: {
@@ -629,8 +637,9 @@ async function handleFiles(files) {
   for (const file of files) {
     try {
       const lowerName = file.name.toLowerCase();
-      const isDicom = lowerName.endsWith(".dcm") || lowerName.endsWith(".dicom") || file.type === "application/dicom";
-      const loaded = isDicom ? await loadDicomImage(file) : { canvas: await loadRasterCanvas(file), metadata: {} };
+      const buffer = await file.arrayBuffer();
+      const isDicom = isDicomFile(file, buffer, lowerName);
+      const loaded = isDicom ? loadDicomImage(buffer) : { canvas: await loadRasterCanvas(file), metadata: {} };
       const image = addImageFromCanvas(loaded.canvas, file.name, isDicom ? "dicom" : "image", loaded.metadata);
       if (!firstNewImageId) firstNewImageId = image.id;
     } catch (error) {
@@ -663,8 +672,17 @@ function loadRasterCanvas(file) {
   });
 }
 
-async function loadDicomImage(file) {
-  const buffer = await file.arrayBuffer();
+function isDicomFile(file, buffer, lowerName = file.name.toLowerCase()) {
+  return lowerName.endsWith(".dcm") || lowerName.endsWith(".dicom") || file.type === "application/dicom" || hasDicomPreamble(buffer);
+}
+
+function hasDicomPreamble(buffer) {
+  if (buffer.byteLength < 132) return false;
+  const bytes = new Uint8Array(buffer, 128, 4);
+  return bytes[0] === 0x44 && bytes[1] === 0x49 && bytes[2] === 0x43 && bytes[3] === 0x4d;
+}
+
+function loadDicomImage(buffer) {
   return parseDicomToCanvas(buffer);
 }
 
@@ -776,9 +794,11 @@ function parseDicomToCanvas(buffer) {
 
   const explicit = transferSyntax !== "1.2.840.10008.1.2";
   const littleEndian = transferSyntax !== "1.2.840.10008.1.2.2";
+  const isJpegLossless = jpegLosslessTransferSyntaxes.has(transferSyntax);
+  const isUncompressed = uncompressedTransferSyntaxes.has(transferSyntax);
   if (!littleEndian) throw new Error("DICOM big-endian ainda não suportado neste protótipo");
-  if (!["1.2.840.10008.1.2", "1.2.840.10008.1.2.1", "1.2.840.10008.1.2.1.99"].includes(transferSyntax)) {
-    throw new Error("DICOM comprimido ou transfer syntax não suportado");
+  if (!isUncompressed && !isJpegLossless) {
+    throw new Error(`DICOM transfer syntax não suportado: ${transferSyntax}`);
   }
 
   let pixelElement = null;
@@ -796,13 +816,15 @@ function parseDicomToCanvas(buffer) {
   }
 
   if (!pixelElement) throw new Error("pixel data não encontrado");
-  if (pixelElement.length === 0xffffffff) throw new Error("DICOM encapsulado/comprimido não suportado");
 
   const rows = numberTag(tags, 0x0028, 0x0010);
   const columns = numberTag(tags, 0x0028, 0x0011);
   const bitsAllocated = numberTag(tags, 0x0028, 0x0100) || 8;
+  const bitsStored = numberTag(tags, 0x0028, 0x0101) || bitsAllocated;
   const pixelRepresentation = numberTag(tags, 0x0028, 0x0103) || 0;
   const samplesPerPixel = numberTag(tags, 0x0028, 0x0002) || 1;
+  const planarConfiguration = numberTag(tags, 0x0028, 0x0006) || 0;
+  const numberOfFrames = Number.parseInt(stringTag(tags, 0x0028, 0x0008), 10) || 1;
   const photometric = stringTag(tags, 0x0028, 0x0004).toUpperCase();
   const windowCenter = decimalTag(tags, 0x0028, 0x1050);
   const windowWidth = decimalTag(tags, 0x0028, 0x1051);
@@ -811,22 +833,129 @@ function parseDicomToCanvas(buffer) {
   const spacing = extractDicomPixelSpacing(tags);
 
   if (!rows || !columns) throw new Error("linhas/colunas DICOM ausentes");
-  if (samplesPerPixel !== 1) throw new Error("somente DICOM monocromático é suportado agora");
+  if (![1, 3].includes(samplesPerPixel)) throw new Error("somente DICOM monocromático ou RGB é suportado agora");
   if (![8, 16].includes(bitsAllocated)) throw new Error("bits allocated DICOM não suportado");
+  if (numberOfFrames > 1) throw new Error("DICOM multiframe ainda não suportado neste protótipo");
 
+  const pixelOptions = {
+    rows,
+    columns,
+    samplesPerPixel,
+    bitsAllocated,
+    bitsStored,
+    pixelRepresentation,
+    planarConfiguration,
+    photometric,
+    windowCenter,
+    windowWidth,
+    slope,
+    intercept,
+  };
+
+  let canvas;
+  if (pixelElement.length === 0xffffffff) {
+    if (!isJpegLossless) throw new Error("DICOM encapsulado/comprimido não suportado");
+    canvas = decodeJpegLosslessToCanvas(buffer, pixelElement, pixelOptions);
+  } else {
+    canvas = dicomPixelDataToCanvas(buffer, pixelElement.valueOffset, pixelElement.length, pixelOptions);
+  }
+
+  return {
+    canvas,
+    metadata: {
+      rows,
+      columns,
+      photometric,
+      transferSyntax,
+      transferSyntaxName: transferSyntaxNames[transferSyntax] || transferSyntax,
+      modality: stringTag(tags, 0x0008, 0x0060),
+      manufacturer: stringTag(tags, 0x0008, 0x0070),
+      model: stringTag(tags, 0x0008, 0x1090),
+      samplesPerPixel,
+      bitsAllocated,
+      bitsStored,
+      pixelSpacingMm: spacing?.mmPerPixel || null,
+      pixelSpacingXmm: spacing?.x || null,
+      pixelSpacingYmm: spacing?.y || null,
+      scaleSource: spacing?.source || "",
+    },
+  };
+}
+
+function decodeJpegLosslessToCanvas(buffer, pixelElement, options) {
+  const decoderClass = window.JpegLosslessDecoder?.Decoder;
+  if (!decoderClass) throw new Error("decodificador JPEG Lossless não carregado");
+
+  const frame = firstEncapsulatedFrame(buffer, pixelElement);
+  const decoder = new decoderClass();
+  const decoded = decoder.decompress(frame.buffer, frame.offset, frame.length);
+  return dicomPixelDataToCanvas(decoded, 0, decoded.byteLength, {
+    ...options,
+    rows: decoder.frame?.dimY || options.rows,
+    columns: decoder.frame?.dimX || options.columns,
+    samplesPerPixel: decoder.frame?.numComp || options.samplesPerPixel,
+    bitsAllocated: decoder.frame?.precision > 8 ? 16 : 8,
+    bitsStored: decoder.frame?.precision || options.bitsStored,
+    planarConfiguration: 0,
+  });
+}
+
+function firstEncapsulatedFrame(buffer, pixelElement) {
+  const view = new DataView(buffer);
+  let offset = pixelElement.valueOffset;
+  let basicOffsetTableSkipped = false;
+  const fragments = [];
+
+  while (offset + 8 <= buffer.byteLength) {
+    const group = view.getUint16(offset, true);
+    const element = view.getUint16(offset + 2, true);
+    const length = view.getUint32(offset + 4, true);
+    if (group !== 0xfffe) break;
+    if (element === 0xe0dd) break;
+    if (element !== 0xe000) break;
+
+    const valueOffset = offset + 8;
+    if (!basicOffsetTableSkipped) {
+      basicOffsetTableSkipped = true;
+    } else if (length > 0) {
+      fragments.push({ offset: valueOffset, length });
+    }
+    offset = valueOffset + length + (length % 2);
+  }
+
+  if (!fragments.length) throw new Error("fragmentos DICOM encapsulados não encontrados");
+  if (fragments.length === 1) return { buffer, offset: fragments[0].offset, length: fragments[0].length };
+
+  const totalLength = fragments.reduce((sum, fragment) => sum + fragment.length, 0);
+  const combined = new Uint8Array(totalLength);
+  let targetOffset = 0;
+  fragments.forEach((fragment) => {
+    combined.set(new Uint8Array(buffer, fragment.offset, fragment.length), targetOffset);
+    targetOffset += fragment.length;
+  });
+  return { buffer: combined.buffer, offset: 0, length: combined.byteLength };
+}
+
+function dicomPixelDataToCanvas(buffer, valueOffset, valueLength, options) {
+  if (options.samplesPerPixel === 3) return dicomRgbToCanvas(buffer, valueOffset, valueLength, options);
+  return dicomMonochromeToCanvas(buffer, valueOffset, valueLength, options);
+}
+
+function dicomMonochromeToCanvas(buffer, valueOffset, valueLength, options) {
+  const { rows, columns, bitsAllocated, pixelRepresentation, photometric, windowCenter, windowWidth, slope, intercept } = options;
+  const view = new DataView(buffer, valueOffset, valueLength);
   const raw = new Float32Array(rows * columns);
   let min = Infinity;
   let max = -Infinity;
-  const pixelOffset = pixelElement.valueOffset;
 
   for (let i = 0; i < raw.length; i += 1) {
     let value;
     if (bitsAllocated === 8) {
-      value = new Uint8Array(buffer, pixelOffset + i, 1)[0];
+      value = view.getUint8(i);
     } else if (pixelRepresentation === 1) {
-      value = view.getInt16(pixelOffset + i * 2, true);
+      value = view.getInt16(i * 2, true);
     } else {
-      value = view.getUint16(pixelOffset + i * 2, true);
+      value = view.getUint16(i * 2, true);
     }
     value = value * slope + intercept;
     raw[i] = value;
@@ -861,18 +990,54 @@ function parseDicomToCanvas(buffer) {
   }
 
   canvasCtx.putImageData(image, 0, 0);
+  return canvas;
+}
+
+function dicomRgbToCanvas(buffer, valueOffset, valueLength, options) {
+  if (options.bitsAllocated !== 8) throw new Error("DICOM RGB com mais de 8 bits ainda não suportado");
+  const { rows, columns, photometric, planarConfiguration } = options;
+  const pixelCount = rows * columns;
+  const source = new Uint8Array(buffer, valueOffset, valueLength);
+  if (source.length < pixelCount * 3) throw new Error("pixel data RGB incompleto");
+
+  const canvas = document.createElement("canvas");
+  canvas.width = columns;
+  canvas.height = rows;
+  const canvasCtx = canvas.getContext("2d");
+  const image = canvasCtx.createImageData(columns, rows);
+
+  for (let i = 0; i < pixelCount; i += 1) {
+    let c1;
+    let c2;
+    let c3;
+    if (planarConfiguration === 1) {
+      c1 = source[i];
+      c2 = source[pixelCount + i];
+      c3 = source[pixelCount * 2 + i];
+    } else {
+      const sourceIndex = i * 3;
+      c1 = source[sourceIndex];
+      c2 = source[sourceIndex + 1];
+      c3 = source[sourceIndex + 2];
+    }
+
+    const rgb = photometric.startsWith("YBR") ? ybrToRgb(c1, c2, c3) : { r: c1, g: c2, b: c3 };
+    const targetIndex = i * 4;
+    image.data[targetIndex] = rgb.r;
+    image.data[targetIndex + 1] = rgb.g;
+    image.data[targetIndex + 2] = rgb.b;
+    image.data[targetIndex + 3] = 255;
+  }
+
+  canvasCtx.putImageData(image, 0, 0);
+  return canvas;
+}
+
+function ybrToRgb(y, cb, cr) {
   return {
-    canvas,
-    metadata: {
-      rows,
-      columns,
-      photometric,
-      transferSyntax,
-      pixelSpacingMm: spacing?.mmPerPixel || null,
-      pixelSpacingXmm: spacing?.x || null,
-      pixelSpacingYmm: spacing?.y || null,
-      scaleSource: spacing?.source || "",
-    },
+    r: clamp(Math.round(y + 1.402 * (cr - 128)), 0, 255),
+    g: clamp(Math.round(y - 0.344136 * (cb - 128) - 0.714136 * (cr - 128)), 0, 255),
+    b: clamp(Math.round(y + 1.772 * (cb - 128)), 0, 255),
   };
 }
 
@@ -1678,11 +1843,19 @@ function refreshEditedShape(kind, shape) {
   if (kind === "roi") shape.analysis = analyzeRoi(shape);
 }
 
+function dicomMetaSummary(image) {
+  if (image?.source !== "dicom") return "";
+  const metadata = image.dicomMetadata || {};
+  const device = [metadata.manufacturer, metadata.model].filter(Boolean).join(" ");
+  const parts = [metadata.transferSyntaxName, device].filter(Boolean);
+  return parts.length ? ` · ${parts.join(" · ")}` : "";
+}
+
 function updateUi() {
   applyTranslations();
   els.emptyState.classList.toggle("hidden", Boolean(state.image));
   els.imageMeta.textContent = state.image
-    ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)${state.image.scaleSource ? ` · ${t("scaleAuto")} ${formatNumber(state.image.pixelSpacingMm, 4)} mm/px` : ""}`
+    ? `${state.image.name} · ${state.image.width} x ${state.image.height}px · ${state.images.length} imagem(ns)${state.image.scaleSource ? ` · ${t("scaleAuto")} ${formatNumber(state.image.pixelSpacingMm, 4)} mm/px` : ""}${dicomMetaSummary(state.image)}`
     : `${t("noImageLoaded")} · GUST`;
   els.exportExcelButton.disabled = !hasExcelExportData();
   els.deleteRoiButton.disabled = !selectedRoi();
@@ -2158,6 +2331,7 @@ function exportJson() {
       pixelSpacingXmm: image.pixelSpacingXmm,
       pixelSpacingYmm: image.pixelSpacingYmm,
       scaleSource: image.scaleSource,
+      dicomMetadata: image.dicomMetadata,
       rois: image.rois,
       measurements: image.measurements.map((measurement) => ({
         ...measurement,

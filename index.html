@@ -22,7 +22,7 @@
             <option value="en">English</option>
             <option value="es">Español</option>
           </select>
-          <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,.dcm,.dicom,application/dicom" multiple hidden />
+          <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,.dcm,.dicom,application/dicom,*/*" multiple hidden />
           <button id="openFileButton" class="primary-button" type="button" title="Abrir imagem" data-i18n-title="openImage">
             <span aria-hidden="true">+</span>
             <span data-i18n="openImage">Abrir imagem</span>
@@ -277,6 +277,7 @@
       </div>
     </div>
 
+    <script src="./vendor/jpeg-lossless-decoder-js-2.1.2.global.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
