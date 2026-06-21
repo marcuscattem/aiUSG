@@ -2,9 +2,9 @@
 
 Documento tecnico para apoio a redacao de artigo cientifico sobre o desenvolvimento da ferramenta GUST.
 
-Versao documentada: estado local com suporte a DICOM JPEG Lossless  
-Data do documento: 2026-06-20  
-Repositorio/projeto: `aiUSG`  
+Versao documentada: estado local com suporte a DICOM JPEG Lossless e JPEG Baseline
+Data do documento: 2026-06-20
+Repositorio/projeto: `aiUSG`
 Aplicacao publicada: https://marcuscattem.github.io/aiUSG/
 
 ## 1. Visao geral
@@ -19,7 +19,7 @@ O processamento e realizado no navegador, sem backend. As imagens sao lidas loca
 
 O objetivo do GUST e facilitar a quantificacao de ecointensidade em imagens de ultrassonografia por meio de:
 
-- carregamento de imagens convencionais, DICOM nao comprimido e DICOM JPEG Lossless;
+- carregamento de imagens convencionais, DICOM nao comprimido, DICOM JPEG Lossless e DICOM JPEG Baseline;
 - desenho e edicao de ROIs;
 - contagem de pixels por nivel de cinza de 0 a 255;
 - calculo de estatisticas descritivas da EI;
@@ -64,6 +64,8 @@ A partir do suporte a DICOM JPEG Lossless, a aplicacao passou a incluir uma bibl
 
 - `jpeg-lossless-decoder-js` versao `2.1.2`, licenca MIT, usada para decodificar pixel data DICOM nas Transfer Syntaxes JPEG Lossless `1.2.840.10008.1.2.4.57` e `1.2.840.10008.1.2.4.70`.
 
+A decodificacao de DICOM JPEG Baseline (`1.2.840.10008.1.2.4.50`) usa o decodificador JPEG nativo do navegador por meio de `Blob` e `createImageBitmap` ou `Image`.
+
 A geracao do arquivo XLSX continua implementada diretamente em JavaScript, montando XML e ZIP no proprio navegador, sem biblioteca externa de planilhas.
 
 ## 5. Formatos de entrada
@@ -85,7 +87,8 @@ A aplicacao aceita arquivos:
 
 - `.dcm`;
 - `.dicom`;
-- MIME type `application/dicom`.
+- MIME type `application/dicom`;
+- arquivos sem extensao quando possuem assinatura DICOM `DICM` no preambulo.
 
 Suporte DICOM atual:
 
@@ -95,6 +98,7 @@ Suporte DICOM atual:
 - transfer syntaxes alvo:
   - Implicit VR Little Endian (`1.2.840.10008.1.2`);
   - Explicit VR Little Endian (`1.2.840.10008.1.2.1`);
+  - JPEG Baseline Process 1 (`1.2.840.10008.1.2.4.50`);
   - JPEG Lossless, Nonhierarchical (`1.2.840.10008.1.2.4.57`);
   - JPEG Lossless, Nonhierarchical, First-Order Prediction/Selection 1 (`1.2.840.10008.1.2.4.70`);
 - `MONOCHROME1` com inversao para escala visual correta;
@@ -103,7 +107,7 @@ Suporte DICOM atual:
 
 Limitacoes atuais do DICOM:
 
-- DICOM comprimido por outros algoritmos alem de JPEG Lossless nao e suportado;
+- DICOM comprimido por outros algoritmos alem de JPEG Baseline e JPEG Lossless nao e suportado;
 - Deflated Explicit VR Little Endian nao possui etapa de descompressao dedicada nesta versao;
 - Big Endian nao e suportado;
 - DICOM multiframe nao e suportado;
@@ -143,6 +147,7 @@ Cada imagem carregada e armazenada como um objeto contendo:
 - escala espacial em mm/px;
 - escala X e Y quando disponiveis;
 - origem da escala;
+- nome e ID do paciente quando presentes nos metadados DICOM;
 - lista de ROIs;
 - lista de medidas;
 - ROI e medida selecionadas.
@@ -388,6 +393,7 @@ O arquivo gerado possui extensao `.xlsx` e e construido no navegador sem bibliot
 
 Inclui tabela agregada do paciente e tabelas por ROI, com:
 
+- ID e nome do paciente quando disponiveis;
 - total de pixels;
 - total de pixels por banda;
 - percentual por banda;
@@ -397,6 +403,8 @@ Inclui tabela agregada do paciente e tabelas por ROI, com:
 
 Campos:
 
+- ID do paciente;
+- nome do paciente;
 - imagem;
 - origem da imagem;
 - ROI;
@@ -413,6 +421,8 @@ Campos:
 
 Campos:
 
+- ID do paciente;
+- nome do paciente;
 - imagem;
 - origem da imagem;
 - ROI;
@@ -428,6 +438,8 @@ Essa aba contem a contagem para cada nivel de 0 a 255.
 
 Campos:
 
+- ID do paciente;
+- nome do paciente;
 - imagem;
 - origem da imagem;
 - medida;
@@ -463,7 +475,7 @@ Dependencias externas em runtime:
 
 Frameworks: nenhum.
 
-Bibliotecas de imagem: nenhuma.
+Bibliotecas de imagem: nenhuma externa para JPEG Baseline; a decodificacao JPEG Baseline usa APIs nativas do navegador.
 
 Bibliotecas DICOM:
 
@@ -481,7 +493,7 @@ Hashes SHA-256 dos arquivos principais na versao documentada:
 | Arquivo | SHA-256 |
 |---|---|
 | `index.html` | `a3c6347d26e6cab6d397d51dc7ec38abb7e42c51676efcca8d645da1b662e67f` |
-| `app.js` | `094d8d36ae954eb15b0699e020df7eb6d0f4de4a97820e1c3dd82bce12ce8d79` |
+| `app.js` | `9ca00cd455dd1099f8bf90986da92d40880c32fcbe33f7a8a9ebf51f735022d0` |
 | `styles.css` | `a12782ed2c6f75f2440b467654be6c4adebc168efc605b4352a997f02675ce27` |
 | `vendor/jpeg-lossless-decoder-js-2.1.2.global.js` | `7737a3dde1d89ab8de76e0dc3bde4a2abe0e1146d62cfcc48bc86d8f2d4fcbef` |
 | `vendor/jpeg-lossless-decoder-js-LICENSE.txt` | `35d89c5827cb1f9685ffc3fb6ebcc9532f75663554ed6efddadad95071bae5c9` |
@@ -491,7 +503,7 @@ Tamanho aproximado dos arquivos:
 | Arquivo | Tamanho aproximado |
 |---|---|
 | `index.html` | 16 KB |
-| `app.js` | 108 KB |
+| `app.js` | 113 KB |
 | `styles.css` | 12 KB |
 | `vendor/jpeg-lossless-decoder-js-2.1.2.global.js` | 32 KB |
 | `vendor/jpeg-lossless-decoder-js-LICENSE.txt` | 4 KB |
@@ -500,8 +512,9 @@ Tamanho aproximado dos arquivos:
 
 - Nao ha validacao clinica formal documentada neste arquivo.
 - Nao ha comparacao automatizada contra ImageJ no codigo atual.
-- DICOM comprimido por algoritmos diferentes de JPEG Lossless nao e suportado.
+- DICOM comprimido por algoritmos diferentes de JPEG Baseline e JPEG Lossless nao e suportado.
 - DICOM multiframe e Big Endian nao sao suportados.
+- Em DICOM encapsulado, a versao atual abre o primeiro frame/fragmento de imagem.
 - Nao ha segmentacao automatica por inteligencia artificial ativa; a funcionalidade de IA foi removida em versoes anteriores a pedido do usuario.
 - ROIs livres nao possuem edicao por alcas apos marcadas.
 - A escala espacial usa um unico valor medio de mm/px para exibicao principal quando X e Y diferem, embora X e Y sejam preservados nas exportacoes.
@@ -516,7 +529,9 @@ Sugestoes de elementos a descrever na metodologia:
 - conversao para escala de cinza por combinacao ponderada RGB;
 - leitura de metadados DICOM por parser proprio;
 - decodificacao de DICOM JPEG Lossless por biblioteca JavaScript MIT vendorizada;
+- decodificacao de DICOM JPEG Baseline por APIs nativas do navegador;
 - extracao de escala espacial por metadados DICOM;
+- extracao de nome e ID do paciente quando presentes no DICOM;
 - desenho manual e edicao de ROIs;
 - calculo de histograma de 256 niveis;
 - calculo de EI media, mediana, desvio padrao, minimo e maximo;
@@ -527,4 +542,4 @@ Sugestoes de elementos a descrever na metodologia:
 
 ## 26. Sugestao de descricao curta
 
-O GUST e uma aplicacao web estatica, desenvolvida em HTML5, CSS3 e JavaScript, destinada a quantificacao de ecointensidade em imagens ultrassonograficas. A ferramenta permite carregar imagens raster, DICOM nao comprimido e DICOM JPEG Lossless, delimitar ROIs por formas geometricas ou livres, calcular histogramas de intensidade de cinza de 0 a 255, obter estatisticas de EI e exportar resultados em planilhas XLSX. O processamento ocorre localmente no navegador, sem envio de imagens a servidores.
+O GUST e uma aplicacao web estatica, desenvolvida em HTML5, CSS3 e JavaScript, destinada a quantificacao de ecointensidade em imagens ultrassonograficas. A ferramenta permite carregar imagens raster, DICOM nao comprimido, DICOM JPEG Baseline e DICOM JPEG Lossless, delimitar ROIs por formas geometricas ou livres, calcular histogramas de intensidade de cinza de 0 a 255, obter estatisticas de EI, extrair escala metrica e identificacao do paciente quando disponiveis no DICOM e exportar resultados em planilhas XLSX. O processamento ocorre localmente no navegador, sem envio de imagens a servidores.

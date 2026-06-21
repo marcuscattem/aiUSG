@@ -63,10 +63,12 @@ const roiColors = ["#0f766e", "#d97706", "#2563eb", "#9333ea", "#be123c", "#4d7c
 const measureColors = ["#2563eb", "#d97706", "#9333ea", "#be123c", "#4d7c0f", "#0f766e"];
 const defaultBandColors = ["#144b5a", "#0f766e", "#d97706", "#c2410c", "#7f1d1d", "#4338ca", "#7c3aed", "#be185d", "#475569", "#111827", "#0891b2"];
 const uncompressedTransferSyntaxes = new Set(["1.2.840.10008.1.2", "1.2.840.10008.1.2.1"]);
+const jpegBaselineTransferSyntaxes = new Set(["1.2.840.10008.1.2.4.50"]);
 const jpegLosslessTransferSyntaxes = new Set(["1.2.840.10008.1.2.4.57", "1.2.840.10008.1.2.4.70"]);
 const transferSyntaxNames = {
   "1.2.840.10008.1.2": "Implicit VR Little Endian",
   "1.2.840.10008.1.2.1": "Explicit VR Little Endian",
+  "1.2.840.10008.1.2.4.50": "JPEG Baseline",
   "1.2.840.10008.1.2.4.57": "JPEG Lossless",
   "1.2.840.10008.1.2.4.70": "JPEG Lossless Selection 1",
 };
@@ -639,7 +641,7 @@ async function handleFiles(files) {
       const lowerName = file.name.toLowerCase();
       const buffer = await file.arrayBuffer();
       const isDicom = isDicomFile(file, buffer, lowerName);
-      const loaded = isDicom ? loadDicomImage(buffer) : { canvas: await loadRasterCanvas(file), metadata: {} };
+      const loaded = isDicom ? await loadDicomImage(buffer) : { canvas: await loadRasterCanvas(file), metadata: {} };
       const image = addImageFromCanvas(loaded.canvas, file.name, isDicom ? "dicom" : "image", loaded.metadata);
       if (!firstNewImageId) firstNewImageId = image.id;
     } catch (error) {
@@ -682,7 +684,7 @@ function hasDicomPreamble(buffer) {
   return bytes[0] === 0x44 && bytes[1] === 0x49 && bytes[2] === 0x43 && bytes[3] === 0x4d;
 }
 
-function loadDicomImage(buffer) {
+async function loadDicomImage(buffer) {
   return parseDicomToCanvas(buffer);
 }
 
@@ -712,6 +714,8 @@ function addImageFromCanvas(canvas, name, source = "image", metadata = {}) {
     pixelSpacingXmm: Number.isFinite(metadata.pixelSpacingXmm) ? metadata.pixelSpacingXmm : null,
     pixelSpacingYmm: Number.isFinite(metadata.pixelSpacingYmm) ? metadata.pixelSpacingYmm : null,
     scaleSource: metadata.scaleSource || "",
+    patientName: metadata.patientName || "",
+    patientId: metadata.patientId || "",
     dicomMetadata: metadata,
     rois: [],
     measurements: [],
@@ -774,7 +778,7 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function parseDicomToCanvas(buffer) {
+async function parseDicomToCanvas(buffer) {
   const view = new DataView(buffer);
   const textDecoder = new TextDecoder("ascii");
   const tags = new Map();
@@ -794,10 +798,11 @@ function parseDicomToCanvas(buffer) {
 
   const explicit = transferSyntax !== "1.2.840.10008.1.2";
   const littleEndian = transferSyntax !== "1.2.840.10008.1.2.2";
+  const isJpegBaseline = jpegBaselineTransferSyntaxes.has(transferSyntax);
   const isJpegLossless = jpegLosslessTransferSyntaxes.has(transferSyntax);
   const isUncompressed = uncompressedTransferSyntaxes.has(transferSyntax);
   if (!littleEndian) throw new Error("DICOM big-endian ainda não suportado neste protótipo");
-  if (!isUncompressed && !isJpegLossless) {
+  if (!isUncompressed && !isJpegBaseline && !isJpegLossless) {
     throw new Error(`DICOM transfer syntax não suportado: ${transferSyntax}`);
   }
 
@@ -854,8 +859,13 @@ function parseDicomToCanvas(buffer) {
 
   let canvas;
   if (pixelElement.length === 0xffffffff) {
-    if (!isJpegLossless) throw new Error("DICOM encapsulado/comprimido não suportado");
-    canvas = decodeJpegLosslessToCanvas(buffer, pixelElement, pixelOptions);
+    if (isJpegBaseline) {
+      canvas = await decodeJpegBaselineToCanvas(buffer, pixelElement, pixelOptions);
+    } else if (isJpegLossless) {
+      canvas = decodeJpegLosslessToCanvas(buffer, pixelElement, pixelOptions);
+    } else {
+      throw new Error("DICOM encapsulado/comprimido não suportado");
+    }
   } else {
     canvas = dicomPixelDataToCanvas(buffer, pixelElement.valueOffset, pixelElement.length, pixelOptions);
   }
@@ -871,6 +881,11 @@ function parseDicomToCanvas(buffer) {
       modality: stringTag(tags, 0x0008, 0x0060),
       manufacturer: stringTag(tags, 0x0008, 0x0070),
       model: stringTag(tags, 0x0008, 0x1090),
+      patientName: formatDicomPersonName(stringTag(tags, 0x0010, 0x0010)),
+      patientId: stringTag(tags, 0x0010, 0x0020),
+      patientBirthDate: stringTag(tags, 0x0010, 0x0030),
+      patientSex: stringTag(tags, 0x0010, 0x0040),
+      numberOfFrames,
       samplesPerPixel,
       bitsAllocated,
       bitsStored,
@@ -880,6 +895,37 @@ function parseDicomToCanvas(buffer) {
       scaleSource: spacing?.source || "",
     },
   };
+}
+
+async function decodeJpegBaselineToCanvas(buffer, pixelElement, options) {
+  const frame = firstEncapsulatedFrame(buffer, pixelElement);
+  const bytes = new Uint8Array(frame.buffer, frame.offset, frame.length);
+  const blob = new Blob([bytes], { type: "image/jpeg" });
+  const imageSource = await decodeJpegBlob(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = options.columns || imageSource.width;
+  canvas.height = options.rows || imageSource.height;
+  const canvasCtx = canvas.getContext("2d");
+  canvasCtx.drawImage(imageSource, 0, 0, canvas.width, canvas.height);
+  imageSource.close?.();
+  return canvas;
+}
+
+function decodeJpegBlob(blob) {
+  if ("createImageBitmap" in window) return createImageBitmap(blob);
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("falha ao decodificar JPEG DICOM"));
+    };
+    image.src = url;
+  });
 }
 
 function decodeJpegLosslessToCanvas(buffer, pixelElement, options) {
@@ -1186,6 +1232,10 @@ function tag(tags, group, element) {
 
 function stringTag(tags, group, element) {
   return tag(tags, group, element)?.text.replace(/\0/g, "").trim() || "";
+}
+
+function formatDicomPersonName(value) {
+  return value.replace(/\^+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function decimalTag(tags, group, element) {
@@ -1846,8 +1896,9 @@ function refreshEditedShape(kind, shape) {
 function dicomMetaSummary(image) {
   if (image?.source !== "dicom") return "";
   const metadata = image.dicomMetadata || {};
+  const patient = [metadata.patientName, metadata.patientId ? `ID ${metadata.patientId}` : ""].filter(Boolean).join(" · ");
   const device = [metadata.manufacturer, metadata.model].filter(Boolean).join(" ");
-  const parts = [metadata.transferSyntaxName, device].filter(Boolean);
+  const parts = [patient, metadata.transferSyntaxName, device].filter(Boolean);
   return parts.length ? ` · ${parts.join(" · ")}` : "";
 }
 
@@ -2195,6 +2246,8 @@ function renderBandBars() {
 
 function exportCsv() {
   const header = [
+    "patient_id",
+    "patient_name",
     "image",
     "image_source",
     "roi",
@@ -2215,6 +2268,8 @@ function exportCsv() {
   allRois().forEach(({ image, roi }) => {
     roi.analysis.bands.forEach((band) => {
       rows.push([
+        patientIdForImage(image),
+        patientNameForImage(image),
         image.name,
         image.source,
         roi.label,
@@ -2242,6 +2297,8 @@ function exportCsv() {
 
 function exportHistogramCsv() {
   const header = [
+    "patient_id",
+    "patient_name",
     "image",
     "image_source",
     "roi",
@@ -2259,6 +2316,8 @@ function exportHistogramCsv() {
     for (let pixelValue = 0; pixelValue <= 255; pixelValue += 1) {
       const count = hist[pixelValue] || 0;
       rows.push([
+        patientIdForImage(image),
+        patientNameForImage(image),
         image.name,
         image.source,
         roi.label,
@@ -2280,6 +2339,8 @@ function exportHistogramCsv() {
 
 function exportMeasurementsCsv() {
   const header = [
+    "patient_id",
+    "patient_name",
     "image",
     "image_source",
     "measurement",
@@ -2298,6 +2359,8 @@ function exportMeasurementsCsv() {
     const spacing = image.pixelSpacingMm || state.pixelSpacingMm;
     const display = measurementDisplay(measurement, spacing);
     rows.push([
+      patientIdForImage(image),
+      patientNameForImage(image),
       image.name,
       image.source,
       measurement.label,
@@ -2327,6 +2390,8 @@ function exportJson() {
       source: image.source,
       width: image.width,
       height: image.height,
+      patientName: image.patientName,
+      patientId: image.patientId,
       pixelSpacingMm: image.pixelSpacingMm,
       pixelSpacingXmm: image.pixelSpacingXmm,
       pixelSpacingYmm: image.pixelSpacingYmm,
@@ -2365,13 +2430,32 @@ function exportExcel() {
   downloadBlob(`${baseFileName()}_GUST.xlsx`, blob);
 }
 
+function patientIdForImage(image) {
+  return image.patientId || image.dicomMetadata?.patientId || "";
+}
+
+function patientNameForImage(image) {
+  return image.patientName || image.dicomMetadata?.patientName || "";
+}
+
+function primaryPatientInfo() {
+  const image = state.images.find((item) => patientIdForImage(item) || patientNameForImage(item));
+  return {
+    id: image ? patientIdForImage(image) : "",
+    name: image ? patientNameForImage(image) : "",
+  };
+}
+
 function buildEiBandsRows() {
   const rows = [];
   const bands = bandsForMode(state.bandMode);
   const roiItems = allRois();
   const patientAnalysis = aggregateHistogramAnalysis(roiItems.map(({ roi }) => roi.analysis).filter(Boolean));
   if (patientAnalysis.total) {
+    const patient = primaryPatientInfo();
     rows.push(["Paciente"]);
+    if (patient.id) rows.push(["Paciente ID", patient.id]);
+    if (patient.name) rows.push(["Paciente nome", patient.name]);
     appendEiBandTable(rows, patientAnalysis, bands);
     rows.push([]);
   }
@@ -2379,6 +2463,8 @@ function buildEiBandsRows() {
     const analysis = roi.analysis;
     if (!analysis) return;
     rows.push([index + 1]);
+    rows.push(["Paciente ID", patientIdForImage(image)]);
+    rows.push(["Paciente nome", patientNameForImage(image)]);
     rows.push(["Imagem", image.name]);
     rows.push(["ROI", roi.label]);
     rows.push(["Tipo", roi.type]);
@@ -2416,9 +2502,11 @@ function aggregateHistogramAnalysis(analyses) {
 }
 
 function buildRoiRows() {
-  const rows = [["image", "image_source", "roi", "type", "total_pixels", "ignored_pixels", "mean_ei", "median_ei", "sd_ei", "min_ei", "max_ei"]];
+  const rows = [["patient_id", "patient_name", "image", "image_source", "roi", "type", "total_pixels", "ignored_pixels", "mean_ei", "median_ei", "sd_ei", "min_ei", "max_ei"]];
   allRois().forEach(({ image, roi }) => {
     rows.push([
+      patientIdForImage(image),
+      patientNameForImage(image),
       image.name,
       image.source,
       roi.label,
@@ -2436,13 +2524,15 @@ function buildRoiRows() {
 }
 
 function buildHistogramRows() {
-  const rows = [["image", "image_source", "roi", "type", "total_pixels", "pixel_value", "pixel_count", "pixel_percent"]];
+  const rows = [["patient_id", "patient_name", "image", "image_source", "roi", "type", "total_pixels", "pixel_value", "pixel_count", "pixel_percent"]];
   allRois().forEach(({ image, roi }) => {
     const total = roi.analysis?.total || 0;
     const hist = roi.analysis?.hist || [];
     for (let pixelValue = 0; pixelValue <= 255; pixelValue += 1) {
       const count = hist[pixelValue] || 0;
       rows.push([
+        patientIdForImage(image),
+        patientNameForImage(image),
         image.name,
         image.source,
         roi.label,
@@ -2460,6 +2550,8 @@ function buildHistogramRows() {
 function buildMeasurementRows() {
   const rows = [
     [
+      "patient_id",
+      "patient_name",
       "image",
       "image_source",
       "measurement",
@@ -2477,6 +2569,8 @@ function buildMeasurementRows() {
     const spacing = image.pixelSpacingMm || state.pixelSpacingMm;
     const display = measurementDisplay(measurement, spacing);
     rows.push([
+      patientIdForImage(image),
+      patientNameForImage(image),
       image.name,
       image.source,
       measurement.label,
