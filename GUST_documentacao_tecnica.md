@@ -2,7 +2,7 @@
 
 Documento tecnico para apoio a redacao de artigo cientifico sobre o desenvolvimento da ferramenta GUST.
 
-Versao documentada: estado local com novo design, suporte a DICOM JPEG Lossless e JPEG Baseline
+Versao documentada: estado local com novo design, suporte a DICOM JPEG Lossless/JPEG Baseline e escala em JPEG convertido
 Data do documento: 2026-06-22
 Repositorio/projeto: `aiUSG`
 Aplicacao publicada: https://marcuscattem.github.io/aiUSG/
@@ -20,6 +20,7 @@ O processamento e realizado no navegador, sem backend. As imagens sao lidas loca
 O objetivo do GUST e facilitar a quantificacao de ecointensidade em imagens de ultrassonografia por meio de:
 
 - carregamento de imagens convencionais, DICOM nao comprimido, DICOM JPEG Lossless e DICOM JPEG Baseline;
+- tentativa de captura automatica de escala em JPEG/JPG convertido de DICOM quando os metadados sao preservados;
 - desenho e edicao de ROIs;
 - contagem de pixels por nivel de cinza de 0 a 255;
 - calculo de estatisticas descritivas da EI;
@@ -81,6 +82,8 @@ A aplicacao aceita:
 
 Esses formatos sao lidos por `FileReader`, carregados como `Image` e desenhados em um canvas auxiliar. Em seguida, os dados RGBA sao convertidos para arrays internos de RGB e escala de cinza.
 
+Para JPEG/JPG, a ferramenta tambem percorre metadados embutidos nos segmentos do arquivo, procurando informacoes de escala que possam ter sido preservadas por conversores DICOM. Sao consideradas descricoes EXIF, XMP e comentarios JPEG com padroes como `Pixel Spacing`, `Physical Delta X/Y`, `mm/px`, `px/mm` e tags DICOM textuais. Quando nao ha metadado DICOM textual, a ferramenta pode usar a densidade EXIF/JFIF como fallback, marcando a origem da escala para revisao.
+
 ### DICOM
 
 A aplicacao aceita arquivos:
@@ -113,9 +116,9 @@ Limitacoes atuais do DICOM:
 - DICOM multiframe nao e suportado;
 - a leitura DICOM e propositalmente simples, implementada para prototipo e validacao inicial.
 
-## 6. Captura automatica de escala metrica via DICOM
+## 6. Captura automatica de escala metrica via DICOM e JPEG
 
-Quando possivel, o GUST tenta extrair a escala espacial do DICOM e preencher automaticamente a escala em mm/px. A escala e armazenada por imagem, permitindo que diferentes imagens do mesmo paciente tenham calibracoes distintas.
+Quando possivel, o GUST tenta extrair a escala espacial do DICOM ou de JPEG/JPG convertido de DICOM e preencher automaticamente a escala em mm/px. A escala e armazenada por imagem, permitindo que diferentes imagens do mesmo paciente tenham calibracoes distintas.
 
 Tags/estruturas consideradas:
 
@@ -132,6 +135,14 @@ Campos exportados relacionados a escala:
 - `pixelSpacingXmm`;
 - `pixelSpacingYmm`;
 - `scaleSource`.
+
+Em JPEG/JPG, a origem da escala pode aparecer como:
+
+- `JPEG metadata Pixel Spacing`;
+- `JPEG metadata Physical Delta`;
+- `JPEG metadata mm/px`;
+- `JPEG EXIF resolution`;
+- `JPEG JFIF density`.
 
 ## 7. Modelo de dados interno
 
@@ -355,7 +366,7 @@ A aplicacao permite carregar varias imagens simultaneamente. A lista de imagens 
 - nome do arquivo;
 - tipo de origem (`IMG` ou `DICOM`);
 - dimensoes;
-- escala DICOM quando disponivel;
+- escala automatica quando disponivel;
 - numero de ROIs;
 - EI media ponderada das ROIs da imagem.
 
@@ -493,7 +504,7 @@ Hashes SHA-256 dos arquivos principais na versao documentada:
 | Arquivo | SHA-256 |
 |---|---|
 | `index.html` | `5c9bf9709daf63d145570b06b8f6e0e357c9581092051a8496a9f76e54616df2` |
-| `app.js` | `9ca00cd455dd1099f8bf90986da92d40880c32fcbe33f7a8a9ebf51f735022d0` |
+| `app.js` | `cdeb0cd05d01e94dce62302ad1bfebe789c87d174668f264699eadeea63af282` |
 | `styles.css` | `bc358b64f0402f136afa25af13c87b126c818e5b7aa3abb76f1ac52b46be67fe` |
 | `vendor/jpeg-lossless-decoder-js-2.1.2.global.js` | `7737a3dde1d89ab8de76e0dc3bde4a2abe0e1146d62cfcc48bc86d8f2d4fcbef` |
 | `vendor/jpeg-lossless-decoder-js-LICENSE.txt` | `35d89c5827cb1f9685ffc3fb6ebcc9532f75663554ed6efddadad95071bae5c9` |
@@ -503,7 +514,7 @@ Tamanho aproximado dos arquivos:
 | Arquivo | Tamanho aproximado |
 |---|---|
 | `index.html` | 18 KB |
-| `app.js` | 113 KB |
+| `app.js` | 126 KB |
 | `styles.css` | 17 KB |
 | `vendor/jpeg-lossless-decoder-js-2.1.2.global.js` | 32 KB |
 | `vendor/jpeg-lossless-decoder-js-LICENSE.txt` | 4 KB |
@@ -515,6 +526,7 @@ Tamanho aproximado dos arquivos:
 - DICOM comprimido por algoritmos diferentes de JPEG Baseline e JPEG Lossless nao e suportado.
 - DICOM multiframe e Big Endian nao sao suportados.
 - Em DICOM encapsulado, a versao atual abre o primeiro frame/fragmento de imagem.
+- JPG/JPEG convertido de DICOM so permite escala automatica quando o conversor preserva metadados de escala ou densidade; valores EXIF/JFIF podem representar densidade de exibicao/impressao e devem ser conferidos pelo usuario.
 - Nao ha segmentacao automatica por inteligencia artificial ativa; a funcionalidade de IA foi removida em versoes anteriores a pedido do usuario.
 - ROIs livres nao possuem edicao por alcas apos marcadas.
 - A escala espacial usa um unico valor medio de mm/px para exibicao principal quando X e Y diferem, embora X e Y sejam preservados nas exportacoes.
@@ -531,6 +543,7 @@ Sugestoes de elementos a descrever na metodologia:
 - decodificacao de DICOM JPEG Lossless por biblioteca JavaScript MIT vendorizada;
 - decodificacao de DICOM JPEG Baseline por APIs nativas do navegador;
 - extracao de escala espacial por metadados DICOM;
+- tentativa de extracao de escala espacial em JPEG convertido de DICOM por metadados EXIF/XMP/JFIF/comentarios;
 - extracao de nome e ID do paciente quando presentes no DICOM;
 - desenho manual e edicao de ROIs;
 - calculo de histograma de 256 niveis;
@@ -542,4 +555,4 @@ Sugestoes de elementos a descrever na metodologia:
 
 ## 26. Sugestao de descricao curta
 
-O GUST e uma aplicacao web estatica, desenvolvida em HTML5, CSS3 e JavaScript, destinada a quantificacao de ecointensidade em imagens ultrassonograficas. A ferramenta permite carregar imagens raster, DICOM nao comprimido, DICOM JPEG Baseline e DICOM JPEG Lossless, delimitar ROIs por formas geometricas ou livres, calcular histogramas de intensidade de cinza de 0 a 255, obter estatisticas de EI, extrair escala metrica e identificacao do paciente quando disponiveis no DICOM e exportar resultados em planilhas XLSX. O processamento ocorre localmente no navegador, sem envio de imagens a servidores.
+O GUST e uma aplicacao web estatica, desenvolvida em HTML5, CSS3 e JavaScript, destinada a quantificacao de ecointensidade em imagens ultrassonograficas. A ferramenta permite carregar imagens raster, DICOM nao comprimido, DICOM JPEG Baseline e DICOM JPEG Lossless, delimitar ROIs por formas geometricas ou livres, calcular histogramas de intensidade de cinza de 0 a 255, obter estatisticas de EI, extrair escala metrica e identificacao do paciente quando disponiveis no DICOM, tentar recuperar escala em JPEG convertido de DICOM quando ha metadados preservados e exportar resultados em planilhas XLSX. O processamento ocorre localmente no navegador, sem envio de imagens a servidores.

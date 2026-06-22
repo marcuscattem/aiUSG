@@ -641,7 +641,9 @@ async function handleFiles(files) {
       const lowerName = file.name.toLowerCase();
       const buffer = await file.arrayBuffer();
       const isDicom = isDicomFile(file, buffer, lowerName);
-      const loaded = isDicom ? await loadDicomImage(buffer) : { canvas: await loadRasterCanvas(file), metadata: {} };
+      const loaded = isDicom
+        ? await loadDicomImage(buffer)
+        : { canvas: await loadRasterCanvas(file), metadata: extractRasterMetadata(file, buffer) };
       const image = addImageFromCanvas(loaded.canvas, file.name, isDicom ? "dicom" : "image", loaded.metadata);
       if (!firstNewImageId) firstNewImageId = image.id;
     } catch (error) {
@@ -686,6 +688,361 @@ function hasDicomPreamble(buffer) {
 
 async function loadDicomImage(buffer) {
   return parseDicomToCanvas(buffer);
+}
+
+function extractRasterMetadata(file, buffer) {
+  if (!isJpegImage(file, buffer)) return {};
+  const spacing = extractJpegPixelSpacing(buffer);
+  if (!spacing) return {};
+  return {
+    pixelSpacingMm: spacing.mmPerPixel,
+    pixelSpacingXmm: spacing.x,
+    pixelSpacingYmm: spacing.y,
+    scaleSource: spacing.source,
+  };
+}
+
+function isJpegImage(file, buffer) {
+  const lowerName = file.name.toLowerCase();
+  const bytes = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 2));
+  return file.type === "image/jpeg" || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || (bytes[0] === 0xff && bytes[1] === 0xd8);
+}
+
+function extractJpegPixelSpacing(buffer) {
+  if (buffer.byteLength < 4) return null;
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+
+  const textChunks = [];
+  let densitySpacing = null;
+  let offset = 2;
+
+  while (offset + 4 <= buffer.byteLength) {
+    if (bytes[offset] !== 0xff) break;
+    while (offset < buffer.byteLength && bytes[offset] === 0xff) offset += 1;
+    const marker = bytes[offset];
+    offset += 1;
+    if (marker === 0xda || marker === 0xd9) break;
+    if (marker >= 0xd0 && marker <= 0xd7) continue;
+    if (offset + 2 > buffer.byteLength) break;
+
+    const segmentLength = view.getUint16(offset, false);
+    if (segmentLength < 2) break;
+    const dataOffset = offset + 2;
+    const dataLength = segmentLength - 2;
+    if (dataOffset + dataLength > buffer.byteLength) break;
+
+    if (marker === 0xe0 && !densitySpacing) {
+      densitySpacing = extractJfifDensity(buffer, dataOffset, dataLength);
+    } else if (marker === 0xe1) {
+      const app1 = extractApp1Metadata(buffer, dataOffset, dataLength);
+      if (app1.text) textChunks.push(app1.text);
+      if (app1.spacing && !densitySpacing) densitySpacing = app1.spacing;
+    } else if (marker === 0xfe || (marker >= 0xe2 && marker <= 0xef)) {
+      const text = metadataTextFromBytes(buffer, dataOffset, dataLength);
+      if (metadataTextLooksUseful(text)) textChunks.push(text);
+    }
+
+    offset = dataOffset + dataLength;
+  }
+
+  return spacingFromMetadataText(textChunks.join("\n")) || densitySpacing;
+}
+
+function extractJfifDensity(buffer, offset, length) {
+  if (length < 12 || !startsWithAscii(buffer, offset, length, "JFIF\0")) return null;
+  const view = new DataView(buffer);
+  const unit = view.getUint8(offset + 7);
+  const xDensity = view.getUint16(offset + 8, false);
+  const yDensity = view.getUint16(offset + 10, false);
+  const unitName = unit === 1 ? "inch" : unit === 2 ? "cm" : "";
+  return spacingFromDensity(xDensity, yDensity, unitName, "JPEG JFIF density");
+}
+
+function extractApp1Metadata(buffer, offset, length) {
+  if (startsWithAscii(buffer, offset, length, "Exif\0\0")) return extractExifMetadata(buffer, offset, length);
+
+  const xmpHeader = "http://ns.adobe.com/xap/1.0/\0";
+  if (startsWithAscii(buffer, offset, length, xmpHeader)) {
+    const text = metadataTextFromBytes(buffer, offset + xmpHeader.length, length - xmpHeader.length);
+    return { text, spacing: null };
+  }
+
+  const text = metadataTextFromBytes(buffer, offset, length);
+  return metadataTextLooksUseful(text) ? { text, spacing: null } : { text: "", spacing: null };
+}
+
+function extractExifMetadata(buffer, offset, length) {
+  const view = new DataView(buffer);
+  const tiffOffset = offset + 6;
+  const end = offset + length;
+  if (tiffOffset + 8 > end) return { text: "", spacing: null };
+
+  const byteOrder = asciiFromBytes(buffer, tiffOffset, 2);
+  const littleEndian = byteOrder === "II";
+  if (!littleEndian && byteOrder !== "MM") return { text: "", spacing: null };
+  if (view.getUint16(tiffOffset + 2, littleEndian) !== 42) return { text: "", spacing: null };
+
+  const ifd0Offset = tiffOffset + view.getUint32(tiffOffset + 4, littleEndian);
+  const ifd0 = readExifIfd(view, buffer, tiffOffset, ifd0Offset, end, littleEndian);
+  const exifPointer = ifd0.values.get(0x8769);
+  const exifIfd = Number.isFinite(exifPointer)
+    ? readExifIfd(view, buffer, tiffOffset, tiffOffset + exifPointer, end, littleEndian, ifd0.visited)
+    : { values: new Map(), text: [] };
+
+  const xDensity = ifd0.values.get(0x011a);
+  const yDensity = ifd0.values.get(0x011b);
+  const unit = ifd0.values.get(0x0128);
+  const unitName = unit === 2 ? "inch" : unit === 3 ? "cm" : "";
+  return {
+    text: [...ifd0.text, ...exifIfd.text].join("\n"),
+    spacing: spacingFromDensity(xDensity, yDensity, unitName, "JPEG EXIF resolution"),
+  };
+}
+
+function readExifIfd(view, buffer, tiffOffset, ifdOffset, end, littleEndian, visited = new Set()) {
+  const values = new Map();
+  const text = [];
+  if (ifdOffset < tiffOffset || ifdOffset + 2 > end || visited.has(ifdOffset)) return { values, text, visited };
+  visited.add(ifdOffset);
+
+  const entryCount = view.getUint16(ifdOffset, littleEndian);
+  const entriesOffset = ifdOffset + 2;
+  if (entriesOffset + entryCount * 12 > end) return { values, text, visited };
+
+  for (let index = 0; index < entryCount; index += 1) {
+    const entryOffset = entriesOffset + index * 12;
+    const tagId = view.getUint16(entryOffset, littleEndian);
+    const type = view.getUint16(entryOffset + 2, littleEndian);
+    const count = view.getUint32(entryOffset + 4, littleEndian);
+    const byteCount = exifTypeByteCount(type, count);
+    if (!byteCount) continue;
+
+    const valueOffset = byteCount <= 4 ? entryOffset + 8 : tiffOffset + view.getUint32(entryOffset + 8, littleEndian);
+    if (valueOffset < tiffOffset || valueOffset + byteCount > end) continue;
+
+    if ([0x011a, 0x011b, 0x0128, 0x8769].includes(tagId)) {
+      const value = readExifNumber(view, valueOffset, type, littleEndian);
+      if (Number.isFinite(value)) values.set(tagId, value);
+    }
+
+    if ([0x010e, 0x0131, 0x0132, 0x9286, 0x9c9b, 0x9c9c, 0x9c9d, 0x9c9e, 0x9c9f].includes(tagId)) {
+      const valueText = readExifText(buffer, valueOffset, byteCount, type);
+      if (metadataTextLooksUseful(valueText)) text.push(valueText);
+    }
+  }
+
+  return { values, text, visited };
+}
+
+function exifTypeByteCount(type, count) {
+  const sizes = {
+    1: 1,
+    2: 1,
+    3: 2,
+    4: 4,
+    5: 8,
+    7: 1,
+    9: 4,
+    10: 8,
+  };
+  return sizes[type] ? sizes[type] * count : 0;
+}
+
+function readExifNumber(view, offset, type, littleEndian) {
+  if (type === 3) return view.getUint16(offset, littleEndian);
+  if (type === 4) return view.getUint32(offset, littleEndian);
+  if (type === 5) {
+    const numerator = view.getUint32(offset, littleEndian);
+    const denominator = view.getUint32(offset + 4, littleEndian);
+    return denominator ? numerator / denominator : null;
+  }
+  if (type === 9) return view.getInt32(offset, littleEndian);
+  if (type === 10) {
+    const numerator = view.getInt32(offset, littleEndian);
+    const denominator = view.getInt32(offset + 4, littleEndian);
+    return denominator ? numerator / denominator : null;
+  }
+  return null;
+}
+
+function readExifText(buffer, offset, length, type) {
+  const bytes = new Uint8Array(buffer, offset, length);
+  if (startsWithBytes(bytes, [0x41, 0x53, 0x43, 0x49, 0x49, 0, 0, 0])) {
+    return decodeMetadataBytes(bytes.subarray(8));
+  }
+  if (startsWithBytes(bytes, [0x55, 0x4e, 0x49, 0x43, 0x4f, 0x44, 0x45, 0])) {
+    return decodeMetadataBytes(bytes.subarray(8));
+  }
+  if (type === 1 || type === 7) return decodeMetadataBytes(bytes);
+  return metadataTextFromBytes(buffer, offset, length);
+}
+
+function spacingFromDensity(xDensity, yDensity, unitName, source) {
+  if (!xDensity || !yDensity || !unitName) return null;
+  const factor = unitName === "inch" ? 25.4 : unitName === "cm" ? 10 : null;
+  if (!factor) return null;
+  const x = factor / xDensity;
+  const y = factor / yDensity;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x <= 0 || y <= 0) return null;
+  return spacingRecord(x, y, source);
+}
+
+function spacingFromMetadataText(text) {
+  if (!text) return null;
+  const normalized = normalizeMetadataText(text);
+  const dicomPair = pairAfterLabels(normalized, [
+    "pixel spacing",
+    "pixelspacing",
+    "imager pixel spacing",
+    "nominal scanned pixel spacing",
+    "nominalscannedpixelspacing",
+    "0028,0030",
+    "0028 0030",
+    "00280030",
+    "0018,1164",
+    "0018 1164",
+    "00181164",
+    "0018,2010",
+    "0018 2010",
+    "00182010",
+  ]);
+  if (dicomPair) return spacingRecord(dicomPair.second, dicomPair.first, "JPEG metadata Pixel Spacing");
+
+  const physicalX = numberAfterLabels(normalized, ["physical delta x", "physicaldeltax", "0018,602c", "0018 602c", "0018602c"]);
+  const physicalY = numberAfterLabels(normalized, ["physical delta y", "physicaldeltay", "0018,602e", "0018 602e", "0018602e"]);
+  if (Number.isFinite(physicalX) && Number.isFinite(physicalY)) {
+    const unitMultiplier = physicalDeltaMultiplier(normalized, physicalX, physicalY);
+    const source = unitMultiplier.assumed ? "JPEG metadata Physical Delta (cm assumed)" : "JPEG metadata Physical Delta";
+    return spacingRecord(Math.abs(physicalX) * unitMultiplier.value, Math.abs(physicalY) * unitMultiplier.value, source);
+  }
+
+  const mmPerPixel = singleSpacingFromText(normalized);
+  if (mmPerPixel) return spacingRecord(mmPerPixel, mmPerPixel, "JPEG metadata mm/px");
+  return null;
+}
+
+function normalizeMetadataText(text) {
+  return text
+    .replace(/\\u005c|&#92;|&bsol;/gi, "\\")
+    .replace(/[<>\[\]{}()"']/g, " ")
+    .replace(/[_:-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function pairAfterLabels(text, labels) {
+  const numberPattern = "([+-]?\\d+(?:[\\.,]\\d+)?)";
+  const separatorPattern = "(?:\\\\|/|,|;|\\s+|x|×)";
+  for (const label of labels) {
+    const pattern = new RegExp(`${escapeRegex(label)}[^0-9+-]{0,80}${numberPattern}\\s*${separatorPattern}\\s*${numberPattern}`, "i");
+    const match = text.match(pattern);
+    if (!match) continue;
+    const first = parseMetadataNumber(match[1]);
+    const second = parseMetadataNumber(match[2]);
+    if (first > 0 && second > 0) return { first, second };
+  }
+  return null;
+}
+
+function numberAfterLabels(text, labels) {
+  const numberPattern = "([+-]?\\d+(?:[\\.,]\\d+)?)";
+  for (const label of labels) {
+    const pattern = new RegExp(`${escapeRegex(label)}[^0-9+-]{0,80}${numberPattern}`, "i");
+    const match = text.match(pattern);
+    if (match) return parseMetadataNumber(match[1]);
+  }
+  return null;
+}
+
+function physicalDeltaMultiplier(text, x, y) {
+  if (/\bmm\b|millimeter/.test(text)) return { value: 1, assumed: false };
+  if (/\bcm\b|centimeter|physical units[^0-9]{0,40}3/.test(text)) return { value: 10, assumed: false };
+  if (Math.max(Math.abs(x), Math.abs(y)) < 0.05) return { value: 10, assumed: true };
+  return { value: 1, assumed: false };
+}
+
+function singleSpacingFromText(text) {
+  const numberPattern = "([+-]?\\d+(?:[\\.,]\\d+)?)";
+  const mmPixel = text.match(new RegExp(`${numberPattern}\\s*(?:mm|millimeters?)\\s*(?:/|per|por)\\s*(?:px|pixel|pixels?)`, "i"));
+  if (mmPixel) return positiveNumberOrNull(parseMetadataNumber(mmPixel[1]));
+
+  const pixelMm = text.match(new RegExp(`${numberPattern}\\s*(?:px|pixel|pixels?)\\s*(?:/|per|por)\\s*mm`, "i"));
+  if (pixelMm) {
+    const pixelsPerMm = parseMetadataNumber(pixelMm[1]);
+    return pixelsPerMm > 0 ? 1 / pixelsPerMm : null;
+  }
+
+  const scaleMm = text.match(new RegExp(`(?:scale|spacing|mm px|mm pixel)[^0-9+-]{0,40}${numberPattern}`, "i"));
+  return scaleMm ? positiveNumberOrNull(parseMetadataNumber(scaleMm[1])) : null;
+}
+
+function positiveNumberOrNull(value) {
+  return value > 0 && Number.isFinite(value) ? value : null;
+}
+
+function parseMetadataNumber(value) {
+  return Number.parseFloat(String(value).replace(",", "."));
+}
+
+function metadataTextFromBytes(buffer, offset, length) {
+  return decodeMetadataBytes(new Uint8Array(buffer, offset, length));
+}
+
+function decodeMetadataBytes(bytes) {
+  const trimmed = trimNullBytes(bytes);
+  if (!trimmed.length) return "";
+  const zeroEven = countZeroBytes(trimmed, 0);
+  const zeroOdd = countZeroBytes(trimmed, 1);
+  const encoding = Math.max(zeroEven, zeroOdd) > trimmed.length / 5 ? "utf-16le" : "utf-8";
+  return new TextDecoder(encoding)
+    .decode(trimmed)
+    .replace(/\0/g, " ")
+    .replace(/[^\S\r\n]+/g, " ")
+    .trim();
+}
+
+function trimNullBytes(bytes) {
+  let start = 0;
+  let end = bytes.length;
+  while (start < end && bytes[start] === 0) start += 1;
+  while (end > start && bytes[end - 1] === 0) end -= 1;
+  return bytes.subarray(start, end);
+}
+
+function countZeroBytes(bytes, start) {
+  let count = 0;
+  for (let index = start; index < bytes.length; index += 2) {
+    if (bytes[index] === 0) count += 1;
+  }
+  return count;
+}
+
+function metadataTextLooksUseful(text) {
+  return /pixel\s*spacing|pixelspacing|physical\s*delta|mm\s*(?:\/|per|por)\s*(?:px|pixel)|(?:px|pixel)\s*(?:\/|per|por)\s*mm|0018|0028|dicom/i.test(text);
+}
+
+function startsWithAscii(buffer, offset, length, text) {
+  if (length < text.length) return false;
+  for (let index = 0; index < text.length; index += 1) {
+    if (new Uint8Array(buffer, offset + index, 1)[0] !== text.charCodeAt(index)) return false;
+  }
+  return true;
+}
+
+function startsWithBytes(bytes, signature) {
+  if (bytes.length < signature.length) return false;
+  return signature.every((value, index) => bytes[index] === value);
+}
+
+function asciiFromBytes(buffer, offset, length) {
+  return new TextDecoder("ascii").decode(new Uint8Array(buffer, offset, length));
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function addImageFromCanvas(canvas, name, source = "image", metadata = {}) {
