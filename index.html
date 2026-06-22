@@ -11,7 +11,7 @@
       <header class="topbar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">GU</div>
-          <div>
+          <div class="brand-text">
             <h1>GUST</h1>
             <p id="imageMeta">Grayscale Ultrasound System Technology</p>
           </div>
@@ -22,18 +22,149 @@
             <option value="en">English</option>
             <option value="es">Español</option>
           </select>
+
+          <span class="top-divider" aria-hidden="true"></span>
+
+          <button id="undoButton" class="icon-action" type="button" title="Desfazer" disabled data-i18n-title="undo">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7L4 12l5 5"/><path d="M4 12h11a5 5 0 0 1 0 10h-3"/></svg>
+          </button>
+          <button id="demoButton" type="button" title="Carregar demo">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M7 5l11 7-11 7z"/></svg>
+            Demo
+          </button>
+
           <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,.dcm,.dicom,application/dicom,*/*" multiple hidden />
           <button id="openFileButton" class="primary-button" type="button" title="Abrir imagem" data-i18n-title="openImage">
-            <span aria-hidden="true">+</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4L7 9M12 4l5 5"/><path d="M5 20h14"/></svg>
             <span data-i18n="openImage">Abrir imagem</span>
           </button>
-          <button id="demoButton" type="button" title="Carregar demo">Demo</button>
-          <button id="undoButton" type="button" title="Desfazer" disabled data-i18n="undo">Desfazer</button>
-          <button id="exportExcelButton" type="button" title="Exportar Excel" disabled data-i18n="exportExcel">Excel</button>
+
+          <!-- Menu: Exportar -->
+          <div class="menu">
+            <button class="menu-trigger" type="button" data-menu-toggle="exportMenu" title="Exportar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M12 16l-5-5M12 16l5-5"/><path d="M5 20h14"/></svg>
+              <span data-i18n="exportOptions">Exportar</span>
+              <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div id="exportMenu" class="menu-pop hidden" style="width:268px;">
+              <div class="menu-label" data-i18n="exportOptions">Exportar</div>
+              <label class="check-row">
+                <input id="exportBandsOption" type="checkbox" checked />
+                <span data-i18n="exportBands">Bandas EI</span>
+              </label>
+              <label class="check-row">
+                <input id="exportRoisOption" type="checkbox" checked />
+                <span data-i18n="exportRois">ROIs</span>
+              </label>
+              <label class="check-row">
+                <input id="exportHistogramOption" type="checkbox" checked />
+                <span data-i18n="exportHistogram">Histograma 0-255</span>
+              </label>
+              <label class="check-row">
+                <input id="exportMeasurementsOption" type="checkbox" checked />
+                <span data-i18n="exportMeasurements">Medidas</span>
+              </label>
+              <button id="exportExcelButton" class="menu-cta" type="button" title="Exportar Excel" disabled data-i18n="exportExcel">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+                Excel
+              </button>
+            </div>
+          </div>
+
+          <!-- Menu: Configurações -->
+          <div class="menu">
+            <button class="menu-trigger icon-action" type="button" data-menu-toggle="settingsMenu" title="Configurações de análise">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.3"/><circle cx="8" cy="17" r="2.3"/></svg>
+            </button>
+            <div id="settingsMenu" class="menu-pop hidden" style="width:312px;">
+              <div class="menu-label" data-i18n="colorFilters">Filtro de cor</div>
+              <label class="check-row">
+                <input id="ignoreColoredPixels" type="checkbox" />
+                <span data-i18n="ignoreColoredPixels">Ignorar pixels coloridos</span>
+              </label>
+              <div class="field-row">
+                <label for="colorTolerance" data-i18n="colorTolerance">Tolerância</label>
+                <input id="colorTolerance" type="number" min="0" max="80" step="1" value="12" />
+              </div>
+              <div class="color-filter-actions">
+                <input id="ignoredColorInput" type="color" value="#ff0000" title="Cor específica" />
+                <button id="addIgnoredColorButton" type="button" data-i18n="addIgnoredColor">Adicionar</button>
+                <button id="pickColorButton" type="button" data-i18n="pickColor">Conta-gotas</button>
+                <button id="clearIgnoredColorsButton" type="button" data-i18n="clearIgnoredColors">Limpar</button>
+              </div>
+              <div class="color-list-label" data-i18n="ignoredColors">Cores ignoradas</div>
+              <div id="ignoredColorsList" class="color-list empty" data-i18n="noIgnoredColors">Nenhuma cor específica</div>
+
+              <div class="menu-divider"></div>
+
+              <div class="menu-label" data-i18n="eiBands">Bandas EI</div>
+              <div class="band-control-row">
+                <div class="segmented" role="group" aria-label="Bandas de ecointensidade">
+                  <button class="segment active" data-band-mode="50" type="button">50</button>
+                  <button class="segment" data-band-mode="25" type="button">25</button>
+                </div>
+                <button id="bandSettingsButton" class="icon-button" type="button" title="Configurar bandas" data-i18n-title="bandSettings">⚙</button>
+              </div>
+              <div id="bandLegend" class="band-legend"></div>
+
+              <div class="menu-divider"></div>
+
+              <label class="check-row">
+                <input id="disableRoiQuick" type="checkbox" />
+                <span data-i18n="disableRoiQuick">Desativar ROI rápido</span>
+              </label>
+            </div>
+          </div>
         </div>
       </header>
 
       <main class="workspace">
+        <!-- Tool rail -->
+        <nav class="tool-rail" aria-label="Ferramentas">
+          <button class="tool-button active" data-tool="pan" type="button" title="Selecionar, mover e editar" data-i18n-title="selectEdit">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M5 3l5 16 2.5-6.5L19 10z"/></svg>
+          </button>
+
+          <span class="rail-sep"></span>
+          <span class="rail-label">ROI</span>
+
+          <button class="tool-button" data-tool="rect" type="button" title="Retângulo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg>
+          </button>
+          <button class="tool-button" data-tool="circle" type="button" title="Círculo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/></svg>
+          </button>
+          <button class="tool-button" data-tool="ellipse" type="button" title="Elipse">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><ellipse cx="12" cy="12" rx="9" ry="6"/></svg>
+          </button>
+          <button class="tool-button" data-tool="freehand" type="button" title="Mão livre">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 14c-1-3 1-7 4-7s4 3 3 5-3 2-3 0 2-3 4-2 4 4 1 7-9 2-9-3z"/></svg>
+          </button>
+
+          <span class="rail-sep"></span>
+          <span class="rail-label">MED</span>
+
+          <button class="tool-button" data-tool="measure-distance" type="button" title="Distância">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 19L19 5"/><path d="M3 17l2 2 2-2M17 3l2 2-2 2" stroke-width="1.5"/></svg>
+          </button>
+          <button class="tool-button" data-tool="measure-rect" type="button" title="Área retangular">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2.5"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+          </button>
+          <button class="tool-button" data-tool="measure-circle" type="button" title="Área circular">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2.5"><circle cx="12" cy="12" r="8"/></svg>
+          </button>
+          <button class="tool-button" data-tool="measure-ellipse" type="button" title="Área elipsoide">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2.5"><ellipse cx="12" cy="12" rx="9" ry="6"/></svg>
+          </button>
+          <button class="tool-button" data-tool="measure-freehand" type="button" title="Área livre">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 14c-1-3 1-7 4-7s4 3 3 5-3 2-3 0 2-3 4-2 4 4 1 7-9 2-9-3z"/></svg>
+          </button>
+          <button class="tool-button" data-tool="measure-angle" type="button" title="Ângulo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19h14L6 6"/><path d="M9 19a8 8 0 0 0-3-7" stroke-width="1.4"/></svg>
+          </button>
+        </nav>
+
+        <!-- Objects panel -->
         <aside class="left-panel">
           <section class="panel-section">
             <h2 data-i18n="images">Imagens</h2>
@@ -41,30 +172,7 @@
           </section>
 
           <section class="panel-section">
-            <h2 data-i18n="navigation">Navegação</h2>
-            <div class="tool-grid small-grid" role="group" aria-label="Navegação">
-              <button class="tool-button active" data-tool="pan" type="button" title="Selecionar, mover e editar" data-i18n-title="selectEdit">
-                <span aria-hidden="true">↕</span>
-              </button>
-            </div>
-          </section>
-
-          <section class="panel-section">
-            <h2 data-i18n="roiTools">Ferramentas de ROI</h2>
-            <div class="tool-grid" role="group" aria-label="Ferramentas de ROI">
-              <button class="tool-button" data-tool="rect" type="button" title="Retângulo">
-                <span aria-hidden="true">▭</span>
-              </button>
-              <button class="tool-button" data-tool="circle" type="button" title="Círculo">
-                <span aria-hidden="true">○</span>
-              </button>
-              <button class="tool-button" data-tool="ellipse" type="button" title="Elipse">
-                <span aria-hidden="true">◯</span>
-              </button>
-              <button class="tool-button" data-tool="freehand" type="button" title="Mão livre">
-                <span aria-hidden="true">⌁</span>
-              </button>
-            </div>
+            <h2>Parâmetros</h2>
             <div class="field-row">
               <label for="circleRadius" data-i18n="radiusPx">Raio px</label>
               <input id="circleRadius" type="number" min="1" step="1" value="40" />
@@ -73,34 +181,6 @@
               <input id="fixedCircle" type="checkbox" />
               <span data-i18n="fixedCircle">Círculo com raio fixo</span>
             </label>
-            <label class="check-row">
-              <input id="disableRoiQuick" type="checkbox" />
-              <span data-i18n="disableRoiQuick">Desativar ROI rápido</span>
-            </label>
-          </section>
-
-          <section class="panel-section">
-            <h2 data-i18n="measureTools">Ferramentas de medida</h2>
-            <div class="tool-grid measure-grid" role="group" aria-label="Ferramentas de medida">
-              <button class="tool-button" data-tool="measure-distance" type="button" title="Distância">
-                <span aria-hidden="true">↔</span>
-              </button>
-              <button class="tool-button" data-tool="measure-rect" type="button" title="Área retangular">
-                <span aria-hidden="true">▭</span>
-              </button>
-              <button class="tool-button" data-tool="measure-circle" type="button" title="Área circular">
-                <span aria-hidden="true">○</span>
-              </button>
-              <button class="tool-button" data-tool="measure-ellipse" type="button" title="Área elipsoide">
-                <span aria-hidden="true">◯</span>
-              </button>
-              <button class="tool-button" data-tool="measure-freehand" type="button" title="Área livre">
-                <span aria-hidden="true">⌁</span>
-              </button>
-              <button class="tool-button" data-tool="measure-angle" type="button" title="Ângulo">
-                <span aria-hidden="true">∠</span>
-              </button>
-            </div>
             <div class="field-row">
               <label for="pixelSpacing" data-i18n="scale">Escala mm/px</label>
               <input id="pixelSpacing" type="number" min="0.0001" step="0.01" value="1" />
@@ -116,67 +196,15 @@
           </section>
 
           <section class="panel-section">
-            <h2 data-i18n="eiBands">Bandas EI</h2>
-            <div class="band-control-row">
-              <div class="segmented" role="group" aria-label="Bandas de ecointensidade">
-                <button class="segment active" data-band-mode="50" type="button">50</button>
-                <button class="segment" data-band-mode="25" type="button">25</button>
-              </div>
-              <button id="bandSettingsButton" class="icon-button" type="button" title="Configurar bandas" data-i18n-title="bandSettings">⚙</button>
-            </div>
-            <div id="bandLegend" class="band-legend"></div>
-          </section>
-
-          <section class="panel-section">
-            <h2 data-i18n="colorFilters">Filtro de cor</h2>
-            <label class="check-row">
-              <input id="ignoreColoredPixels" type="checkbox" />
-              <span data-i18n="ignoreColoredPixels">Ignorar pixels coloridos</span>
-            </label>
-            <div class="field-row">
-              <label for="colorTolerance" data-i18n="colorTolerance">Tolerância</label>
-              <input id="colorTolerance" type="number" min="0" max="80" step="1" value="12" />
-            </div>
-            <div class="color-filter-actions">
-              <input id="ignoredColorInput" type="color" value="#ff0000" title="Cor específica" />
-              <button id="addIgnoredColorButton" type="button" data-i18n="addIgnoredColor">Adicionar</button>
-              <button id="pickColorButton" type="button" data-i18n="pickColor">Conta-gotas</button>
-              <button id="clearIgnoredColorsButton" type="button" data-i18n="clearIgnoredColors">Limpar</button>
-            </div>
-            <div class="color-list-label" data-i18n="ignoredColors">Cores ignoradas</div>
-            <div id="ignoredColorsList" class="color-list empty" data-i18n="noIgnoredColors">Nenhuma cor específica</div>
-          </section>
-
-          <section class="panel-section">
-            <h2 data-i18n="exportOptions">Exportar</h2>
-            <label class="check-row">
-              <input id="exportBandsOption" type="checkbox" checked />
-              <span data-i18n="exportBands">Bandas EI</span>
-            </label>
-            <label class="check-row">
-              <input id="exportRoisOption" type="checkbox" checked />
-              <span data-i18n="exportRois">ROIs</span>
-            </label>
-            <label class="check-row">
-              <input id="exportHistogramOption" type="checkbox" checked />
-              <span data-i18n="exportHistogram">Histograma 0-255</span>
-            </label>
-            <label class="check-row">
-              <input id="exportMeasurementsOption" type="checkbox" checked />
-              <span data-i18n="exportMeasurements">Medidas</span>
-            </label>
-          </section>
-
-          <section class="panel-section">
             <h2>ROIs</h2>
             <div id="roiList" class="roi-list empty" data-i18n="noRois">Sem ROIs</div>
-            <button id="deleteRoiButton" type="button" disabled data-i18n="deleteRoi">Excluir ROI</button>
+            <button id="deleteRoiButton" class="ghost-danger" type="button" disabled data-i18n="deleteRoi">Excluir ROI</button>
           </section>
 
           <section class="panel-section">
             <h2 data-i18n="measurements">Medidas</h2>
             <div id="measureList" class="measure-list empty" data-i18n="noMeasurements">Sem medidas</div>
-            <button id="deleteMeasureButton" type="button" disabled data-i18n="deleteMeasure">Excluir medida</button>
+            <button id="deleteMeasureButton" class="ghost-danger" type="button" disabled data-i18n="deleteMeasure">Excluir medida</button>
           </section>
         </aside>
 
@@ -279,5 +307,35 @@
 
     <script src="./vendor/jpeg-lossless-decoder-js-2.1.2.global.js"></script>
     <script src="./app.js"></script>
+    <script>
+      // Menus suspensos da barra superior (UI apenas — independente do app.js)
+      (function () {
+        const triggers = [...document.querySelectorAll("[data-menu-toggle]")];
+        const pops = triggers.map((t) => document.getElementById(t.dataset.menuToggle));
+        function closeAll(except) {
+          triggers.forEach((t, i) => {
+            if (pops[i] === except) return;
+            pops[i].classList.add("hidden");
+            t.classList.remove("menu-open");
+          });
+        }
+        triggers.forEach((trigger, i) => {
+          trigger.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const pop = pops[i];
+            const willOpen = pop.classList.contains("hidden");
+            closeAll(willOpen ? pop : null);
+            pop.classList.toggle("hidden", !willOpen);
+            trigger.classList.toggle("menu-open", willOpen);
+          });
+        });
+        // Não fechar ao interagir dentro do menu
+        pops.forEach((pop) => pop.addEventListener("click", (e) => e.stopPropagation()));
+        document.addEventListener("click", () => closeAll(null));
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") closeAll(null);
+        });
+      })();
+    </script>
   </body>
 </html>

@@ -2,8 +2,8 @@
 
 Documento tecnico para apoio a redacao de artigo cientifico sobre o desenvolvimento da ferramenta GUST.
 
-Versao documentada: estado local com suporte a DICOM JPEG Lossless e JPEG Baseline
-Data do documento: 2026-06-20
+Versao documentada: estado local com novo design, suporte a DICOM JPEG Lossless e JPEG Baseline
+Data do documento: 2026-06-22
 Repositorio/projeto: `aiUSG`
 Aplicacao publicada: https://marcuscattem.github.io/aiUSG/
 
@@ -492,9 +492,9 @@ Hashes SHA-256 dos arquivos principais na versao documentada:
 
 | Arquivo | SHA-256 |
 |---|---|
-| `index.html` | `a3c6347d26e6cab6d397d51dc7ec38abb7e42c51676efcca8d645da1b662e67f` |
+| `index.html` | `5c9bf9709daf63d145570b06b8f6e0e357c9581092051a8496a9f76e54616df2` |
 | `app.js` | `9ca00cd455dd1099f8bf90986da92d40880c32fcbe33f7a8a9ebf51f735022d0` |
-| `styles.css` | `a12782ed2c6f75f2440b467654be6c4adebc168efc605b4352a997f02675ce27` |
+| `styles.css` | `bc358b64f0402f136afa25af13c87b126c818e5b7aa3abb76f1ac52b46be67fe` |
 | `vendor/jpeg-lossless-decoder-js-2.1.2.global.js` | `7737a3dde1d89ab8de76e0dc3bde4a2abe0e1146d62cfcc48bc86d8f2d4fcbef` |
 | `vendor/jpeg-lossless-decoder-js-LICENSE.txt` | `35d89c5827cb1f9685ffc3fb6ebcc9532f75663554ed6efddadad95071bae5c9` |
 
@@ -502,9 +502,9 @@ Tamanho aproximado dos arquivos:
 
 | Arquivo | Tamanho aproximado |
 |---|---|
-| `index.html` | 16 KB |
+| `index.html` | 18 KB |
 | `app.js` | 113 KB |
-| `styles.css` | 12 KB |
+| `styles.css` | 17 KB |
 | `vendor/jpeg-lossless-decoder-js-2.1.2.global.js` | 32 KB |
 | `vendor/jpeg-lossless-decoder-js-LICENSE.txt` | 4 KB |
 
