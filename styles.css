@@ -715,6 +715,41 @@ input[type="number"]:focus,
   color: var(--navy);
 }
 
+.text-editor-panel {
+  width: 286px;
+  z-index: 35;
+}
+
+.text-editor-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.text-editor-body textarea {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  min-height: 84px;
+  padding: 9px 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.text-editor-body textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(28, 100, 216, 0.12);
+  outline: none;
+}
+
+.text-editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .quick-band span {
   align-items: center;
   display: inline-flex;

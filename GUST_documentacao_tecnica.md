@@ -2,8 +2,8 @@
 
 Documento tecnico para apoio a redacao de artigo cientifico sobre o desenvolvimento da ferramenta GUST.
 
-Versao documentada: estado local com novo design, suporte a DICOM JPEG Lossless/JPEG Baseline e escala em JPEG convertido
-Data do documento: 2026-06-22
+Versao documentada: estado local com novo design, suporte a DICOM JPEG Lossless/JPEG Baseline, escala em JPEG convertido, medidas editaveis e anotacao de texto
+Data do documento: 2026-07-08
 Repositorio/projeto: `aiUSG`
 Aplicacao publicada: https://marcuscattem.github.io/aiUSG/
 
@@ -161,7 +161,8 @@ Cada imagem carregada e armazenada como um objeto contendo:
 - nome e ID do paciente quando presentes nos metadados DICOM;
 - lista de ROIs;
 - lista de medidas;
-- ROI e medida selecionadas.
+- lista de anotacoes de texto;
+- ROI, medida e anotacao selecionadas.
 
 Essa separacao garante que as sobreposicoes desenhadas no canvas visual nao alterem os pixels usados para analise. Os calculos sao feitos sobre os arrays originais extraidos da imagem, nao sobre o canvas com marcadores.
 
@@ -306,6 +307,18 @@ Para areas:
 
 Para angulos, o software calcula o angulo entre dois vetores definidos por tres pontos.
 
+Funcionalidades de edicao das medidas:
+
+- selecao de medidas por clique na lista ou diretamente na imagem;
+- movimentacao de medidas ja desenhadas com a ferramenta de selecao;
+- redimensionamento de areas retangulares, circulares e elipsoides por alcas;
+- reajuste de pontos em medidas de distancia e angulo;
+- movimentacao de areas livres como conjunto;
+- exclusao de medidas selecionadas;
+- desfazer acoes de criacao, edicao e exclusao.
+
+O GUST tambem possui uma ferramenta de texto para inserir anotacoes sobre a imagem. Ao clicar na imagem com a ferramenta de texto ativa, uma janela flutuante permite digitar e aplicar a anotacao. O texto inserido pode ser selecionado, arrastado para outra posicao e excluido por Delete/Backspace.
+
 ## 14. Navegacao e interacao
 
 Funcionalidades de navegacao e edicao:
@@ -315,8 +328,8 @@ Funcionalidades de navegacao e edicao:
 - ajuste automatico da imagem ao viewport;
 - selecao de imagens em lista;
 - suporte a multiplas imagens carregadas simultaneamente;
-- selecao de ROI/medida por clique na lista ou na imagem;
-- delete/backspace para remover ROI ou medida selecionada;
+- selecao de ROI, medida ou texto por clique na lista ou na imagem;
+- delete/backspace para remover ROI, medida ou texto selecionado;
 - Ctrl+Z ou Cmd+Z para desfazer.
 
 O historico de desfazer armazena ate 80 estados.
@@ -503,9 +516,9 @@ Hashes SHA-256 dos arquivos principais na versao documentada:
 
 | Arquivo | SHA-256 |
 |---|---|
-| `index.html` | `5c9bf9709daf63d145570b06b8f6e0e357c9581092051a8496a9f76e54616df2` |
-| `app.js` | `cdeb0cd05d01e94dce62302ad1bfebe789c87d174668f264699eadeea63af282` |
-| `styles.css` | `bc358b64f0402f136afa25af13c87b126c818e5b7aa3abb76f1ac52b46be67fe` |
+| `index.html` | `4f9ca11d15938c927f6afbcc393acb4eeb4952fdd8d231c03b5a4845721ecb69` |
+| `app.js` | `7a4c63a488003d2079c9f0282520c8f54988d6f19427e691f7f8598c7a04c2d0` |
+| `styles.css` | `b5fc483a7f8263f98b9128de08e8d88ba9c1b74be424daa4df18228942072da1` |
 | `vendor/jpeg-lossless-decoder-js-2.1.2.global.js` | `7737a3dde1d89ab8de76e0dc3bde4a2abe0e1146d62cfcc48bc86d8f2d4fcbef` |
 | `vendor/jpeg-lossless-decoder-js-LICENSE.txt` | `35d89c5827cb1f9685ffc3fb6ebcc9532f75663554ed6efddadad95071bae5c9` |
 
@@ -513,9 +526,9 @@ Tamanho aproximado dos arquivos:
 
 | Arquivo | Tamanho aproximado |
 |---|---|
-| `index.html` | 18 KB |
-| `app.js` | 126 KB |
-| `styles.css` | 17 KB |
+| `index.html` | 19 KB |
+| `app.js` | 139 KB |
+| `styles.css` | 18 KB |
 | `vendor/jpeg-lossless-decoder-js-2.1.2.global.js` | 32 KB |
 | `vendor/jpeg-lossless-decoder-js-LICENSE.txt` | 4 KB |
 
@@ -529,6 +542,7 @@ Tamanho aproximado dos arquivos:
 - JPG/JPEG convertido de DICOM so permite escala automatica quando o conversor preserva metadados de escala ou densidade; valores EXIF/JFIF podem representar densidade de exibicao/impressao e devem ser conferidos pelo usuario.
 - Nao ha segmentacao automatica por inteligencia artificial ativa; a funcionalidade de IA foi removida em versoes anteriores a pedido do usuario.
 - ROIs livres nao possuem edicao por alcas apos marcadas.
+- Medidas de area livre podem ser deslocadas como conjunto, mas seus pontos individuais ainda nao possuem edicao por alcas.
 - A escala espacial usa um unico valor medio de mm/px para exibicao principal quando X e Y diferem, embora X e Y sejam preservados nas exportacoes.
 - A ferramenta deve ser descrita como prototipo ou ferramenta em desenvolvimento ate que haja validacao formal de acuracia, reprodutibilidade e confiabilidade.
 
@@ -546,6 +560,8 @@ Sugestoes de elementos a descrever na metodologia:
 - tentativa de extracao de escala espacial em JPEG convertido de DICOM por metadados EXIF/XMP/JFIF/comentarios;
 - extracao de nome e ID do paciente quando presentes no DICOM;
 - desenho manual e edicao de ROIs;
+- desenho, movimentacao e reajuste de medidas geometricas;
+- insercao de anotacoes textuais sobre a imagem;
 - calculo de histograma de 256 niveis;
 - calculo de EI media, mediana, desvio padrao, minimo e maximo;
 - calculo de percentuais por bandas de EI;
@@ -555,4 +571,4 @@ Sugestoes de elementos a descrever na metodologia:
 
 ## 26. Sugestao de descricao curta
 
-O GUST e uma aplicacao web estatica, desenvolvida em HTML5, CSS3 e JavaScript, destinada a quantificacao de ecointensidade em imagens ultrassonograficas. A ferramenta permite carregar imagens raster, DICOM nao comprimido, DICOM JPEG Baseline e DICOM JPEG Lossless, delimitar ROIs por formas geometricas ou livres, calcular histogramas de intensidade de cinza de 0 a 255, obter estatisticas de EI, extrair escala metrica e identificacao do paciente quando disponiveis no DICOM, tentar recuperar escala em JPEG convertido de DICOM quando ha metadados preservados e exportar resultados em planilhas XLSX. O processamento ocorre localmente no navegador, sem envio de imagens a servidores.
+O GUST e uma aplicacao web estatica, desenvolvida em HTML5, CSS3 e JavaScript, destinada a quantificacao de ecointensidade em imagens ultrassonograficas. A ferramenta permite carregar imagens raster, DICOM nao comprimido, DICOM JPEG Baseline e DICOM JPEG Lossless, delimitar ROIs por formas geometricas ou livres, calcular histogramas de intensidade de cinza de 0 a 255, obter estatisticas de EI, extrair escala metrica e identificacao do paciente quando disponiveis no DICOM, tentar recuperar escala em JPEG convertido de DICOM quando ha metadados preservados, desenhar e reajustar medidas, inserir anotacoes de texto sobre a imagem e exportar resultados em planilhas XLSX. O processamento ocorre localmente no navegador, sem envio de imagens a servidores.

@@ -162,6 +162,13 @@
           <button class="tool-button" data-tool="measure-angle" type="button" title="Ângulo">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19h14L6 6"/><path d="M9 19a8 8 0 0 0-3-7" stroke-width="1.4"/></svg>
           </button>
+
+          <span class="rail-sep"></span>
+          <span class="rail-label" data-i18n="textTool">Texto</span>
+
+          <button class="tool-button" data-tool="text" type="button" title="Texto" data-i18n-title="textTool">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14"/><path d="M12 5v14"/><path d="M9 19h6"/></svg>
+          </button>
         </nav>
 
         <!-- Objects panel -->
@@ -302,6 +309,20 @@
           <button id="closeRoiQuickButton" type="button" title="Fechar">×</button>
         </div>
         <div id="roiQuickContent" class="quick-content"></div>
+      </div>
+
+      <div id="textEditorPanel" class="floating-panel text-editor-panel hidden" role="dialog" aria-label="Texto">
+        <div class="floating-head">
+          <strong data-i18n="textTool">Texto</strong>
+          <button id="cancelTextAnnotationButton" type="button" title="Fechar">×</button>
+        </div>
+        <div class="text-editor-body">
+          <textarea id="textAnnotationInput" rows="3" data-i18n-placeholder="textPrompt" placeholder="Texto para inserir na imagem"></textarea>
+          <div class="text-editor-actions">
+            <button id="cancelTextAnnotationSecondaryButton" type="button" data-i18n="cancelText">Cancelar</button>
+            <button id="applyTextAnnotationButton" class="primary-button" type="button" data-i18n="applyText">Aplicar</button>
+          </div>
+        </div>
       </div>
     </div>
 

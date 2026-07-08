@@ -18,6 +18,11 @@ const els = {
   roiQuickHandle: document.querySelector("#roiQuickHandle"),
   roiQuickContent: document.querySelector("#roiQuickContent"),
   closeRoiQuickButton: document.querySelector("#closeRoiQuickButton"),
+  textEditorPanel: document.querySelector("#textEditorPanel"),
+  textAnnotationInput: document.querySelector("#textAnnotationInput"),
+  applyTextAnnotationButton: document.querySelector("#applyTextAnnotationButton"),
+  cancelTextAnnotationButton: document.querySelector("#cancelTextAnnotationButton"),
+  cancelTextAnnotationSecondaryButton: document.querySelector("#cancelTextAnnotationSecondaryButton"),
   exportBandsOption: document.querySelector("#exportBandsOption"),
   exportRoisOption: document.querySelector("#exportRoisOption"),
   exportHistogramOption: document.querySelector("#exportHistogramOption"),
@@ -133,6 +138,11 @@ const i18n = {
     unsupportedImage: "formato de imagem não suportado pelo navegador",
     roi: "ROI",
     measurement: "Medida",
+    textTool: "Texto",
+    textPrompt: "Texto para inserir na imagem",
+    annotation: "Texto",
+    applyText: "Aplicar",
+    cancelText: "Cancelar",
     distance: "distância",
     rectArea: "área retangular",
     circleArea: "área circular",
@@ -199,6 +209,11 @@ const i18n = {
     unsupportedImage: "image format not supported by the browser",
     roi: "ROI",
     measurement: "Measurement",
+    textTool: "Text",
+    textPrompt: "Text to place on the image",
+    annotation: "Text",
+    applyText: "Apply",
+    cancelText: "Cancel",
     distance: "distance",
     rectArea: "rectangular area",
     circleArea: "circular area",
@@ -265,6 +280,11 @@ const i18n = {
     unsupportedImage: "formato de imagen no soportado por el navegador",
     roi: "ROI",
     measurement: "Medida",
+    textTool: "Texto",
+    textPrompt: "Texto para insertar en la imagen",
+    annotation: "Texto",
+    applyText: "Aplicar",
+    cancelText: "Cancelar",
     distance: "distancia",
     rectArea: "área rectangular",
     circleArea: "área circular",
@@ -281,8 +301,10 @@ const state = {
   gray: null,
   rois: [],
   measurements: [],
+  annotations: [],
   selectedId: null,
   selectedMeasureId: null,
+  selectedAnnotationId: null,
   activeTool: "pan",
   language: "pt",
   measureUnit: "px",
@@ -303,6 +325,7 @@ const state = {
   drawing: null,
   angleDraft: null,
   editing: null,
+  pendingTextPoint: null,
   undoStack: [],
   pointer: null,
 };
@@ -356,17 +379,21 @@ function syncActiveImage() {
   state.gray = image?.gray || null;
   state.rois = image?.rois || [];
   state.measurements = image?.measurements || [];
+  state.annotations = image?.annotations || [];
   state.selectedId = image?.selectedId || null;
   state.selectedMeasureId = image?.selectedMeasureId || null;
+  state.selectedAnnotationId = image?.selectedAnnotationId || null;
 }
 
 function setActiveImage(id, shouldFit = true) {
   if (state.image) state.image.selectedId = state.selectedId;
   if (state.image) state.image.selectedMeasureId = state.selectedMeasureId;
+  if (state.image) state.image.selectedAnnotationId = state.selectedAnnotationId;
   state.activeImageId = id;
   syncActiveImage();
   state.drawing = null;
   state.angleDraft = null;
+  closeTextAnnotationEditor();
   state.pickingIgnoreColor = false;
   state.pointer = null;
   if (state.image?.pixelSpacingMm) state.pixelSpacingMm = state.image.pixelSpacingMm;
@@ -382,6 +409,9 @@ function applyTranslations() {
   });
   document.querySelectorAll("[data-i18n-title]").forEach((node) => {
     node.title = t(node.dataset.i18nTitle);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+    node.placeholder = t(node.dataset.i18nPlaceholder);
   });
 }
 
@@ -412,12 +442,15 @@ function snapshotState() {
     activeImageId: state.activeImageId,
     selectedId: state.selectedId,
     selectedMeasureId: state.selectedMeasureId,
+    selectedAnnotationId: state.selectedAnnotationId,
     images: state.images.map((image) => ({
       id: image.id,
       rois: clonePlain(image.rois),
       measurements: clonePlain(image.measurements),
+      annotations: clonePlain(image.annotations || []),
       selectedId: image.selectedId,
       selectedMeasureId: image.selectedMeasureId,
+      selectedAnnotationId: image.selectedAnnotationId || null,
     })),
   };
 }
@@ -436,20 +469,25 @@ function restoreSnapshot(snapshot) {
     if (!image) return;
     image.rois = clonePlain(saved.rois);
     image.measurements = clonePlain(saved.measurements);
+    image.annotations = clonePlain(saved.annotations || []);
     image.selectedId = saved.selectedId;
     image.selectedMeasureId = saved.selectedMeasureId;
+    image.selectedAnnotationId = saved.selectedAnnotationId || null;
   });
   state.activeImageId = snapshot.activeImageId;
   syncActiveImage();
   state.selectedId = snapshot.selectedId;
   state.selectedMeasureId = snapshot.selectedMeasureId;
+  state.selectedAnnotationId = snapshot.selectedAnnotationId || state.image?.selectedAnnotationId || null;
   if (state.image) {
     state.image.selectedId = state.selectedId;
     state.image.selectedMeasureId = state.selectedMeasureId;
+    state.image.selectedAnnotationId = state.selectedAnnotationId;
   }
   state.drawing = null;
   state.editing = null;
   state.angleDraft = null;
+  closeTextAnnotationEditor();
   updateUi();
   draw();
 }
@@ -532,6 +570,7 @@ function draw() {
   if (state.drawing && state.drawing.roi) drawRoi(state.drawing.roi, true, true);
   if (state.drawing && state.drawing.measurement) drawMeasurement(state.drawing.measurement, true, true);
   if (state.angleDraft) drawAngleDraft();
+  state.annotations.forEach((annotation) => drawAnnotation(annotation, annotation.id === state.selectedAnnotationId));
   ctx.restore();
 }
 
@@ -613,6 +652,50 @@ function drawMeasurement(measurement, selected = false, draft = false) {
   if (measurement.type.startsWith("area-")) ctx.fill();
   ctx.stroke();
   ctx.restore();
+}
+
+function drawAnnotation(annotation, selected = false) {
+  const bounds = annotationBounds(annotation);
+  const lines = annotationLines(annotation);
+  const lineHeight = annotation.fontSize * 1.18;
+
+  ctx.save();
+  ctx.font = `${annotation.fontSize}px Arial, sans-serif`;
+  ctx.textBaseline = "top";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(3 / state.view.scale, 2);
+
+  lines.forEach((line, index) => {
+    const y = annotation.y + index * lineHeight;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.88)";
+    ctx.strokeText(line, annotation.x, y);
+    ctx.fillStyle = annotation.color;
+    ctx.fillText(line, annotation.x, y);
+  });
+
+  if (selected) {
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 1.5 / state.view.scale;
+    ctx.setLineDash([4 / state.view.scale, 3 / state.view.scale]);
+    ctx.strokeRect(bounds.x0, bounds.y0, bounds.w, bounds.h);
+  }
+  ctx.restore();
+}
+
+function annotationLines(annotation) {
+  return String(annotation.text || "").split(/\r?\n/).filter(Boolean);
+}
+
+function annotationBounds(annotation) {
+  const lines = annotationLines(annotation);
+  const fontSize = annotation.fontSize || 24;
+  const lineHeight = fontSize * 1.18;
+  ctx.save();
+  ctx.font = `${fontSize}px Arial, sans-serif`;
+  const width = Math.max(1, ...lines.map((line) => ctx.measureText(line).width));
+  ctx.restore();
+  const height = Math.max(lineHeight, lines.length * lineHeight);
+  return { x0: annotation.x, y0: annotation.y, x1: annotation.x + width, y1: annotation.y + height, w: width, h: height };
 }
 
 function drawAngleDraft() {
@@ -1076,8 +1159,10 @@ function addImageFromCanvas(canvas, name, source = "image", metadata = {}) {
     dicomMetadata: metadata,
     rois: [],
     measurements: [],
+    annotations: [],
     selectedId: null,
     selectedMeasureId: null,
+    selectedAnnotationId: null,
   };
   state.images.push(image);
   return image;
@@ -1905,6 +1990,20 @@ function createMeasurement(type, geometry) {
   };
 }
 
+function createAnnotation(text, point) {
+  const id = `text_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  return {
+    id,
+    type: "text",
+    label: `${t("annotation")} ${state.annotations.length + 1}`,
+    text,
+    x: point.x,
+    y: point.y,
+    fontSize: Math.max(18, Math.round((state.image?.width || 760) / 48)),
+    color: "#111827",
+  };
+}
+
 function finishRoi(roi) {
   if (!state.image || !roiHasArea(roi)) return;
   clampShapeToImage(roi);
@@ -1927,6 +2026,53 @@ function finishMeasurement(measurement) {
   state.image.selectedMeasureId = measurement.id;
   updateUi();
   draw();
+}
+
+function finishAnnotation(annotation) {
+  if (!state.image || !annotation.text.trim()) return;
+  clampShapeToImage(annotation);
+  pushUndo();
+  state.annotations.push(annotation);
+  state.selectedAnnotationId = annotation.id;
+  state.image.selectedAnnotationId = annotation.id;
+  state.selectedId = null;
+  state.selectedMeasureId = null;
+  state.image.selectedId = null;
+  state.image.selectedMeasureId = null;
+  updateUi();
+  draw();
+}
+
+function openTextAnnotationEditor(point, screenPoint) {
+  if (!els.textEditorPanel || !els.textAnnotationInput) return;
+  state.pendingTextPoint = clampPointToImage(point);
+  els.textAnnotationInput.value = "";
+  els.textEditorPanel.classList.remove("hidden");
+  const viewerRect = els.viewer.getBoundingClientRect();
+  const panelWidth = els.textEditorPanel.offsetWidth || 260;
+  const panelHeight = els.textEditorPanel.offsetHeight || 170;
+  const left = clamp(viewerRect.left + screenPoint.x + 12, 8, Math.max(8, window.innerWidth - panelWidth - 8));
+  const top = clamp(viewerRect.top + screenPoint.y + 12, 8, Math.max(8, window.innerHeight - panelHeight - 8));
+  els.textEditorPanel.style.left = `${left}px`;
+  els.textEditorPanel.style.top = `${top}px`;
+  requestAnimationFrame(() => els.textAnnotationInput.focus());
+}
+
+function closeTextAnnotationEditor() {
+  state.pendingTextPoint = null;
+  els.textEditorPanel?.classList.add("hidden");
+  if (els.textAnnotationInput) els.textAnnotationInput.value = "";
+}
+
+function applyPendingTextAnnotation() {
+  const text = els.textAnnotationInput?.value.trim();
+  if (!state.pendingTextPoint || !text) {
+    closeTextAnnotationEditor();
+    return;
+  }
+  const annotation = createAnnotation(text, state.pendingTextPoint);
+  closeTextAnnotationEditor();
+  finishAnnotation(annotation);
 }
 
 function roiHasArea(roi) {
@@ -1955,8 +2101,49 @@ function selectedMeasurement() {
   return state.measurements.find((measurement) => measurement.id === state.selectedMeasureId) || null;
 }
 
+function selectedAnnotation() {
+  return state.annotations.find((annotation) => annotation.id === state.selectedAnnotationId) || null;
+}
+
 function pointDistance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function distanceToSegment(point, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return pointDistance(point, a);
+  const tValue = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared, 0, 1);
+  return Math.hypot(point.x - (a.x + tValue * dx), point.y - (a.y + tValue * dy));
+}
+
+function boundsFromPoints(points) {
+  const valid = points.filter(Boolean);
+  if (!valid.length) return null;
+  const xs = valid.map((point) => point.x);
+  const ys = valid.map((point) => point.y);
+  const x0 = Math.min(...xs);
+  const y0 = Math.min(...ys);
+  const x1 = Math.max(...xs);
+  const y1 = Math.max(...ys);
+  return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
+}
+
+function boundedDeltaForPoints(points, dx, dy) {
+  if (!state.image || !points.length) return { dx, dy };
+  const bounds = boundsFromPoints(points);
+  return {
+    dx: clamp(dx, -bounds.x0, state.image.width - bounds.x1),
+    dy: clamp(dy, -bounds.y0, state.image.height - bounds.y1),
+  };
+}
+
+function movePoints(points, dx, dy) {
+  points.forEach((point) => {
+    point.x += dx;
+    point.y += dy;
+  });
 }
 
 function clampPointToImage(point) {
@@ -2055,8 +2242,9 @@ function hasExcelExportData() {
 }
 
 function isEditableShape(kind, shape) {
+  if (kind === "text") return true;
   if (kind === "roi") return ["rect", "circle", "ellipse"].includes(shape.type);
-  return ["area-rect", "area-circle", "area-ellipse"].includes(shape.type);
+  return ["distance", "angle", "area-rect", "area-circle", "area-ellipse", "area-free"].includes(shape.type);
 }
 
 function shapeBounds(kind, shape) {
@@ -2070,10 +2258,32 @@ function shapeBounds(kind, shape) {
   if (shape.type === "circle" || shape.type === "area-circle") {
     return { x0: shape.cx - shape.r, y0: shape.cy - shape.r, x1: shape.cx + shape.r, y1: shape.cy + shape.r, cx: shape.cx, cy: shape.cy, w: shape.r * 2, h: shape.r * 2 };
   }
+  if (shape.type === "distance") return boundsFromPoints([shape.p1, shape.p2]);
+  if (shape.type === "angle") return boundsFromPoints([shape.p1, shape.vertex, shape.p2]);
+  if (shape.type === "area-free") return boundsFromPoints(shape.points);
+  if (kind === "text" || shape.type === "text") {
+    const bounds = annotationBounds(shape);
+    return { ...bounds, cx: (bounds.x0 + bounds.x1) / 2, cy: (bounds.y0 + bounds.y1) / 2 };
+  }
   return null;
 }
 
 function shapeHandles(kind, shape) {
+  if (kind === "text") return [];
+  if (shape.type === "area-free") return [];
+  if (kind === "measurement" && shape.type === "distance") {
+    return [
+      { name: "p1", x: shape.p1.x, y: shape.p1.y },
+      { name: "p2", x: shape.p2.x, y: shape.p2.y },
+    ];
+  }
+  if (kind === "measurement" && shape.type === "angle") {
+    return [
+      { name: "p1", x: shape.p1.x, y: shape.p1.y },
+      { name: "vertex", x: shape.vertex.x, y: shape.vertex.y },
+      { name: "p2", x: shape.p2.x, y: shape.p2.y },
+    ];
+  }
   const bounds = shapeBounds(kind, shape);
   if (!bounds) return [];
   return [
@@ -2108,11 +2318,14 @@ function selectedEditableShapes() {
   if (roi && isEditableShape("roi", roi)) shapes.push({ kind: "roi", shape: roi });
   const measurement = selectedMeasurement();
   if (measurement && isEditableShape("measurement", measurement)) shapes.push({ kind: "measurement", shape: measurement });
+  const annotation = selectedAnnotation();
+  if (annotation && isEditableShape("text", annotation)) shapes.push({ kind: "text", shape: annotation });
   return shapes;
 }
 
 function hitEditableShape(point) {
   const shapes = [
+    ...state.annotations.map((shape) => ({ kind: "text", shape })).reverse(),
     ...state.measurements.map((shape) => ({ kind: "measurement", shape })).reverse(),
     ...state.rois.map((shape) => ({ kind: "roi", shape })).reverse(),
   ];
@@ -2120,7 +2333,22 @@ function hitEditableShape(point) {
 }
 
 function containsEditableShape(kind, shape, point) {
+  const tolerance = Math.max(7 / state.view.scale, 3);
+  if (kind === "text") {
+    const bounds = annotationBounds(shape);
+    return point.x >= bounds.x0 - tolerance && point.x <= bounds.x1 + tolerance && point.y >= bounds.y0 - tolerance && point.y <= bounds.y1 + tolerance;
+  }
   if (kind === "roi") return containsPixel(shape, point.x, point.y);
+  if (shape.type === "distance") return distanceToSegment(point, shape.p1, shape.p2) <= tolerance || pointDistance(point, shape.p1) <= tolerance || pointDistance(point, shape.p2) <= tolerance;
+  if (shape.type === "angle") {
+    return (
+      distanceToSegment(point, shape.p1, shape.vertex) <= tolerance ||
+      distanceToSegment(point, shape.vertex, shape.p2) <= tolerance ||
+      pointDistance(point, shape.p1) <= tolerance ||
+      pointDistance(point, shape.vertex) <= tolerance ||
+      pointDistance(point, shape.p2) <= tolerance
+    );
+  }
   if (shape.type === "area-rect") {
     const x0 = Math.min(shape.x, shape.x + shape.w);
     const x1 = Math.max(shape.x, shape.x + shape.w);
@@ -2139,6 +2367,7 @@ function containsEditableShape(kind, shape, point) {
     if (!rx || !ry) return false;
     return ((point.x - cx) / rx) ** 2 + ((point.y - cy) / ry) ** 2 <= 1;
   }
+  if (shape.type === "area-free") return pointInPolygon(point.x, point.y, shape.points);
   return false;
 }
 
@@ -2146,22 +2375,64 @@ function selectShape(kind, shape) {
   if (kind === "roi") {
     state.selectedId = shape.id;
     state.selectedMeasureId = null;
+    state.selectedAnnotationId = null;
     if (state.image) {
       state.image.selectedId = state.selectedId;
       state.image.selectedMeasureId = null;
+      state.image.selectedAnnotationId = null;
     }
-  } else {
+  } else if (kind === "measurement") {
     state.selectedMeasureId = shape.id;
     state.selectedId = null;
+    state.selectedAnnotationId = null;
     if (state.image) {
       state.image.selectedMeasureId = state.selectedMeasureId;
       state.image.selectedId = null;
+      state.image.selectedAnnotationId = null;
+    }
+  } else if (kind === "text") {
+    state.selectedAnnotationId = shape.id;
+    state.selectedId = null;
+    state.selectedMeasureId = null;
+    if (state.image) {
+      state.image.selectedAnnotationId = state.selectedAnnotationId;
+      state.image.selectedId = null;
+      state.image.selectedMeasureId = null;
     }
   }
   if (kind === "roi") showRoiQuickPanel();
 }
 
+function editableTarget(kind, id) {
+  if (kind === "roi") return state.rois.find((roi) => roi.id === id) || null;
+  if (kind === "measurement") return state.measurements.find((measurement) => measurement.id === id) || null;
+  if (kind === "text") return state.annotations.find((annotation) => annotation.id === id) || null;
+  return null;
+}
+
 function moveShape(shape, dx, dy) {
+  if (shape.type === "distance") {
+    const delta = boundedDeltaForPoints([shape.p1, shape.p2], dx, dy);
+    movePoints([shape.p1, shape.p2], delta.dx, delta.dy);
+    return;
+  }
+  if (shape.type === "angle") {
+    const points = [shape.p1, shape.vertex, shape.p2];
+    const delta = boundedDeltaForPoints(points, dx, dy);
+    movePoints(points, delta.dx, delta.dy);
+    return;
+  }
+  if (shape.type === "area-free") {
+    const delta = boundedDeltaForPoints(shape.points, dx, dy);
+    movePoints(shape.points, delta.dx, delta.dy);
+    return;
+  }
+  if (shape.type === "text") {
+    shape.x += dx;
+    shape.y += dy;
+    clampShapeToImage(shape);
+    return;
+  }
   if (shape.type === "rect" || shape.type === "ellipse" || shape.type === "area-rect" || shape.type === "area-ellipse") {
     shape.x += dx;
     shape.y += dy;
@@ -2174,6 +2445,14 @@ function moveShape(shape, dx, dy) {
 
 function resizeShape(shape, handle, startPoint, currentPoint, original) {
   const current = clampPointToImage(currentPoint);
+  if (shape.type === "distance" && (handle === "p1" || handle === "p2")) {
+    shape[handle] = current;
+    return;
+  }
+  if (shape.type === "angle" && ["p1", "vertex", "p2"].includes(handle)) {
+    shape[handle] = current;
+    return;
+  }
   if (shape.type === "circle" || shape.type === "area-circle") {
     shape.r = clamp(Math.hypot(current.x - original.cx, current.y - original.cy), 1, maxCircleRadius(original.cx, original.cy));
     clampShapeToImage(shape);
@@ -2243,6 +2522,19 @@ function clampShapeToImage(shape) {
     shape.r = Math.min(shape.r, Math.max(1, Math.min(maxX, maxY) / 2));
     shape.cx = clamp(shape.cx, shape.r, maxX - shape.r);
     shape.cy = clamp(shape.cy, shape.r, maxY - shape.r);
+  } else if (shape.type === "distance") {
+    shape.p1 = clampPointToImage(shape.p1);
+    shape.p2 = clampPointToImage(shape.p2);
+  } else if (shape.type === "angle") {
+    shape.p1 = clampPointToImage(shape.p1);
+    shape.vertex = clampPointToImage(shape.vertex);
+    shape.p2 = clampPointToImage(shape.p2);
+  } else if (shape.type === "area-free") {
+    shape.points = shape.points.map(clampPointToImage);
+  } else if (shape.type === "text") {
+    const bounds = annotationBounds(shape);
+    shape.x = clamp(shape.x, 0, Math.max(0, maxX - bounds.w));
+    shape.y = clamp(shape.y, 0, Math.max(0, maxY - bounds.h));
   }
 }
 
@@ -2761,6 +3053,7 @@ function exportJson() {
         unit: measurementDisplay(measurement, image.pixelSpacingMm || state.pixelSpacingMm).unit,
         baseValuePx: measurementBaseValue(measurement),
       })),
+      annotations: image.annotations || [],
     })),
     measurementUnit: state.measureUnit,
     pixelSpacingMm: state.pixelSpacingMm,
@@ -3236,6 +3529,7 @@ els.toolButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.pickingIgnoreColor = false;
     state.activeTool = button.dataset.tool;
+    if (state.activeTool !== "text") closeTextAnnotationEditor();
     updateUi();
   });
 });
@@ -3254,9 +3548,11 @@ els.roiList.addEventListener("click", (event) => {
   if (!item) return;
   state.selectedId = item.dataset.roiId;
   state.selectedMeasureId = null;
+  state.selectedAnnotationId = null;
   if (state.image) {
     state.image.selectedId = state.selectedId;
     state.image.selectedMeasureId = null;
+    state.image.selectedAnnotationId = null;
   }
   showRoiQuickPanel();
   updateUi();
@@ -3268,9 +3564,11 @@ els.measureList.addEventListener("click", (event) => {
   if (!item) return;
   state.selectedMeasureId = item.dataset.measureId;
   state.selectedId = null;
+  state.selectedAnnotationId = null;
   if (state.image) {
     state.image.selectedMeasureId = state.selectedMeasureId;
     state.image.selectedId = null;
+    state.image.selectedAnnotationId = null;
   }
   updateUi();
   draw();
@@ -3306,6 +3604,19 @@ els.exportExcelButton.addEventListener("click", exportExcel);
   input.addEventListener("change", updateUi);
 });
 
+els.applyTextAnnotationButton?.addEventListener("click", applyPendingTextAnnotation);
+els.cancelTextAnnotationButton?.addEventListener("click", closeTextAnnotationEditor);
+els.cancelTextAnnotationSecondaryButton?.addEventListener("click", closeTextAnnotationEditor);
+els.textAnnotationInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeTextAnnotationEditor();
+  } else if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    event.preventDefault();
+    applyPendingTextAnnotation();
+  }
+});
+
 els.viewer.addEventListener("pointerdown", (event) => {
   if (!state.image) return;
   const screen = pointerPoint(event);
@@ -3316,6 +3627,12 @@ els.viewer.addEventListener("pointerdown", (event) => {
     state.pickingIgnoreColor = false;
     updateUi();
     draw();
+    return;
+  }
+
+  if (state.activeTool === "text") {
+    const boundedImage = clampPointToImage(image);
+    openTextAnnotationEditor(boundedImage, screen);
     return;
   }
 
@@ -3427,10 +3744,7 @@ els.viewer.addEventListener("pointermove", (event) => {
   state.pointer.image = image;
 
   if (state.editing) {
-    const target =
-      state.editing.kind === "roi"
-        ? state.rois.find((roi) => roi.id === state.editing.id)
-        : state.measurements.find((measurement) => measurement.id === state.editing.id);
+    const target = editableTarget(state.editing.kind, state.editing.id);
     if (!target) return;
     if (state.editing.mode === "move") {
       const dx = image.x - state.editing.previous.x;
@@ -3495,10 +3809,7 @@ els.viewer.addEventListener("pointerup", (event) => {
   els.viewer.releasePointerCapture(event.pointerId);
 
   if (state.editing) {
-    const target =
-      state.editing.kind === "roi"
-        ? state.rois.find((roi) => roi.id === state.editing.id)
-        : state.measurements.find((measurement) => measurement.id === state.editing.id);
+    const target = editableTarget(state.editing.kind, state.editing.id);
     if (target) refreshEditedShape(state.editing.kind, target);
     state.editing = null;
     state.pointer = null;
@@ -3554,7 +3865,8 @@ window.addEventListener("keydown", (event) => {
   if (event.key !== "Delete" && event.key !== "Backspace") return;
   const roi = selectedRoi();
   const measurement = selectedMeasurement();
-  if (!roi && !measurement) return;
+  const annotation = selectedAnnotation();
+  if (!roi && !measurement && !annotation) return;
   event.preventDefault();
   pushUndo();
   if (roi) {
@@ -3567,6 +3879,11 @@ window.addEventListener("keydown", (event) => {
     if (index >= 0) state.measurements.splice(index, 1);
     state.selectedMeasureId = state.measurements.at(-1)?.id || null;
     if (state.image) state.image.selectedMeasureId = state.selectedMeasureId;
+  } else if (annotation) {
+    const index = state.annotations.findIndex((item) => item.id === annotation.id);
+    if (index >= 0) state.annotations.splice(index, 1);
+    state.selectedAnnotationId = null;
+    if (state.image) state.image.selectedAnnotationId = null;
   }
   updateUi();
   draw();
