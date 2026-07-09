@@ -318,7 +318,29 @@
         </div>
         <div class="text-editor-body">
           <textarea id="textAnnotationInput" rows="3" data-i18n-placeholder="textPrompt" placeholder="Texto para inserir na imagem"></textarea>
+          <div class="text-style-grid">
+            <label>
+              <span data-i18n="textSize">Tamanho</span>
+              <input id="textFontSize" type="number" min="8" max="96" step="1" value="24" />
+            </label>
+            <label>
+              <span data-i18n="textFont">Fonte</span>
+              <select id="textFontFamily">
+                <option value="Arial, sans-serif">Arial</option>
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Times New Roman', serif">Times</option>
+                <option value="'Courier New', monospace">Courier</option>
+              </select>
+            </label>
+            <label class="text-background-toggle">
+              <input id="textBackgroundEnabled" type="checkbox" />
+              <span data-i18n="textBackground">Fundo</span>
+            </label>
+            <input id="textBackgroundColor" type="color" value="#ffffff" aria-label="Cor do fundo do texto" />
+          </div>
           <div class="text-editor-actions">
+            <button id="moveTextAnnotationButton" type="button" data-i18n="moveText" hidden>Mover</button>
+            <button id="deleteTextAnnotationButton" class="inline-danger" type="button" data-i18n="deleteText" hidden>Excluir</button>
             <button id="cancelTextAnnotationSecondaryButton" type="button" data-i18n="cancelText">Cancelar</button>
             <button id="applyTextAnnotationButton" class="primary-button" type="button" data-i18n="applyText">Aplicar</button>
           </div>

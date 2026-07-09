@@ -744,10 +744,63 @@ input[type="number"]:focus,
   outline: none;
 }
 
+.text-style-grid {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 74px 1fr;
+}
+
+.text-style-grid label {
+  color: var(--muted-strong);
+  display: grid;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 4px;
+}
+
+.text-style-grid input,
+.text-style-grid select {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  height: 32px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.text-style-grid input[type="color"] {
+  padding: 3px;
+  width: 42px;
+}
+
+.text-background-toggle {
+  align-items: center;
+  display: flex !important;
+  gap: 6px !important;
+  grid-template-columns: none !important;
+}
+
+.text-background-toggle input {
+  height: 15px;
+  width: 15px;
+}
+
 .text-editor-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.inline-danger {
+  color: var(--danger);
+}
+
+.inline-danger:hover:not(:disabled) {
+  background: #fdf0f2;
+  border-color: #f0c6cd;
 }
 
 .quick-band span {

@@ -20,9 +20,15 @@ const els = {
   closeRoiQuickButton: document.querySelector("#closeRoiQuickButton"),
   textEditorPanel: document.querySelector("#textEditorPanel"),
   textAnnotationInput: document.querySelector("#textAnnotationInput"),
+  textFontSize: document.querySelector("#textFontSize"),
+  textFontFamily: document.querySelector("#textFontFamily"),
+  textBackgroundEnabled: document.querySelector("#textBackgroundEnabled"),
+  textBackgroundColor: document.querySelector("#textBackgroundColor"),
   applyTextAnnotationButton: document.querySelector("#applyTextAnnotationButton"),
   cancelTextAnnotationButton: document.querySelector("#cancelTextAnnotationButton"),
   cancelTextAnnotationSecondaryButton: document.querySelector("#cancelTextAnnotationSecondaryButton"),
+  moveTextAnnotationButton: document.querySelector("#moveTextAnnotationButton"),
+  deleteTextAnnotationButton: document.querySelector("#deleteTextAnnotationButton"),
   exportBandsOption: document.querySelector("#exportBandsOption"),
   exportRoisOption: document.querySelector("#exportRoisOption"),
   exportHistogramOption: document.querySelector("#exportHistogramOption"),
@@ -143,6 +149,11 @@ const i18n = {
     annotation: "Texto",
     applyText: "Aplicar",
     cancelText: "Cancelar",
+    textSize: "Tamanho",
+    textFont: "Fonte",
+    textBackground: "Fundo",
+    moveText: "Mover",
+    deleteText: "Excluir",
     distance: "distância",
     rectArea: "área retangular",
     circleArea: "área circular",
@@ -214,6 +225,11 @@ const i18n = {
     annotation: "Text",
     applyText: "Apply",
     cancelText: "Cancel",
+    textSize: "Size",
+    textFont: "Font",
+    textBackground: "Background",
+    moveText: "Move",
+    deleteText: "Delete",
     distance: "distance",
     rectArea: "rectangular area",
     circleArea: "circular area",
@@ -285,6 +301,11 @@ const i18n = {
     annotation: "Texto",
     applyText: "Aplicar",
     cancelText: "Cancelar",
+    textSize: "Tamaño",
+    textFont: "Fuente",
+    textBackground: "Fondo",
+    moveText: "Mover",
+    deleteText: "Eliminar",
     distance: "distancia",
     rectArea: "área rectangular",
     circleArea: "área circular",
@@ -326,6 +347,7 @@ const state = {
   angleDraft: null,
   editing: null,
   pendingTextPoint: null,
+  editingTextId: null,
   undoStack: [],
   pointer: null,
 };
@@ -657,19 +679,28 @@ function drawMeasurement(measurement, selected = false, draft = false) {
 function drawAnnotation(annotation, selected = false) {
   const bounds = annotationBounds(annotation);
   const lines = annotationLines(annotation);
-  const lineHeight = annotation.fontSize * 1.18;
+  const style = normalizedTextStyle(annotation);
+  const fontSize = normalizedTextFontSize(annotation.fontSize);
+  const lineHeight = fontSize * 1.18;
 
   ctx.save();
-  ctx.font = `${annotation.fontSize}px Arial, sans-serif`;
+  ctx.font = annotationCanvasFont(annotation);
   ctx.textBaseline = "top";
   ctx.lineJoin = "round";
-  ctx.lineWidth = Math.max(3 / state.view.scale, 2);
+
+  if (style.backgroundEnabled) {
+    ctx.fillStyle = style.backgroundColor;
+    ctx.fillRect(bounds.x0, bounds.y0, bounds.w, bounds.h);
+  }
 
   lines.forEach((line, index) => {
     const y = annotation.y + index * lineHeight;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.88)";
-    ctx.strokeText(line, annotation.x, y);
-    ctx.fillStyle = annotation.color;
+    if (!style.backgroundEnabled) {
+      ctx.lineWidth = Math.max(3 / state.view.scale, 2);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.88)";
+      ctx.strokeText(line, annotation.x, y);
+    }
+    ctx.fillStyle = style.color;
     ctx.fillText(line, annotation.x, y);
   });
 
@@ -688,14 +719,25 @@ function annotationLines(annotation) {
 
 function annotationBounds(annotation) {
   const lines = annotationLines(annotation);
-  const fontSize = annotation.fontSize || 24;
+  const fontSize = normalizedTextFontSize(annotation.fontSize);
   const lineHeight = fontSize * 1.18;
+  const padding = annotationBackgroundPadding(annotation);
   ctx.save();
-  ctx.font = `${fontSize}px Arial, sans-serif`;
+  ctx.font = annotationCanvasFont(annotation);
   const width = Math.max(1, ...lines.map((line) => ctx.measureText(line).width));
   ctx.restore();
   const height = Math.max(lineHeight, lines.length * lineHeight);
-  return { x0: annotation.x, y0: annotation.y, x1: annotation.x + width, y1: annotation.y + height, w: width, h: height };
+  return {
+    x0: annotation.x - padding,
+    y0: annotation.y - padding,
+    x1: annotation.x + width + padding,
+    y1: annotation.y + height + padding,
+    w: width + padding * 2,
+    h: height + padding * 2,
+    textW: width,
+    textH: height,
+    padding,
+  };
 }
 
 function drawAngleDraft() {
@@ -1990,6 +2032,70 @@ function createMeasurement(type, geometry) {
   };
 }
 
+function normalizedTextFontSize(value) {
+  const numeric = Number(value);
+  return clamp(Number.isFinite(numeric) ? Math.round(numeric) : 24, 8, 96);
+}
+
+function normalizedTextFontFamily(value) {
+  const allowed = new Set(["Arial, sans-serif", "Georgia, serif", "'Times New Roman', serif", "'Courier New', monospace"]);
+  return allowed.has(value) ? value : "Arial, sans-serif";
+}
+
+function normalizedHexColor(value, fallback = "#ffffff") {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
+}
+
+function defaultTextStyle() {
+  return {
+    fontSize: Math.max(18, Math.round((state.image?.width || 760) / 48)),
+    fontFamily: "Arial, sans-serif",
+    color: "#111827",
+    backgroundEnabled: false,
+    backgroundColor: "#ffffff",
+  };
+}
+
+function normalizedTextStyle(style = {}) {
+  const defaults = defaultTextStyle();
+  return {
+    fontSize: normalizedTextFontSize(style.fontSize ?? defaults.fontSize),
+    fontFamily: normalizedTextFontFamily(style.fontFamily || defaults.fontFamily),
+    color: normalizedHexColor(style.color || defaults.color, defaults.color),
+    backgroundEnabled: Boolean(style.backgroundEnabled),
+    backgroundColor: normalizedHexColor(style.backgroundColor || defaults.backgroundColor, defaults.backgroundColor),
+  };
+}
+
+function textStyleFromControls() {
+  return normalizedTextStyle({
+    fontSize: els.textFontSize?.value,
+    fontFamily: els.textFontFamily?.value,
+    backgroundEnabled: els.textBackgroundEnabled?.checked,
+    backgroundColor: els.textBackgroundColor?.value,
+    color: "#111827",
+  });
+}
+
+function setTextEditorControls(style = {}) {
+  const normalized = normalizedTextStyle(style);
+  if (els.textFontSize) els.textFontSize.value = normalized.fontSize;
+  if (els.textFontFamily) els.textFontFamily.value = normalized.fontFamily;
+  if (els.textBackgroundEnabled) els.textBackgroundEnabled.checked = normalized.backgroundEnabled;
+  if (els.textBackgroundColor) els.textBackgroundColor.value = normalized.backgroundColor;
+}
+
+function annotationCanvasFont(annotation) {
+  const style = normalizedTextStyle(annotation);
+  return `${style.fontSize}px ${style.fontFamily}`;
+}
+
+function annotationBackgroundPadding(annotation) {
+  const style = normalizedTextStyle(annotation);
+  if (!style.backgroundEnabled) return 0;
+  return Math.max(4, Math.round(style.fontSize * 0.22));
+}
+
 function createAnnotation(text, point) {
   const id = `text_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   return {
@@ -1999,8 +2105,7 @@ function createAnnotation(text, point) {
     text,
     x: point.x,
     y: point.y,
-    fontSize: Math.max(18, Math.round((state.image?.width || 760) / 48)),
-    color: "#111827",
+    ...defaultTextStyle(),
   };
 }
 
@@ -2043,10 +2148,23 @@ function finishAnnotation(annotation) {
   draw();
 }
 
-function openTextAnnotationEditor(point, screenPoint) {
+function openTextAnnotationEditor(point, screenPoint, annotation = null) {
   if (!els.textEditorPanel || !els.textAnnotationInput) return;
-  state.pendingTextPoint = clampPointToImage(point);
-  els.textAnnotationInput.value = "";
+  if (annotation) {
+    state.pendingTextPoint = null;
+    state.editingTextId = annotation.id;
+    els.textAnnotationInput.value = annotation.text || "";
+    setTextEditorControls(annotation);
+  } else {
+    state.pendingTextPoint = clampPointToImage(point);
+    state.editingTextId = null;
+    els.textAnnotationInput.value = "";
+    setTextEditorControls(defaultTextStyle());
+  }
+  const editingExistingText = Boolean(state.editingTextId);
+  if (els.moveTextAnnotationButton) els.moveTextAnnotationButton.hidden = !editingExistingText;
+  if (els.deleteTextAnnotationButton) els.deleteTextAnnotationButton.hidden = !editingExistingText;
+
   els.textEditorPanel.classList.remove("hidden");
   const viewerRect = els.viewer.getBoundingClientRect();
   const panelWidth = els.textEditorPanel.offsetWidth || 260;
@@ -2060,19 +2178,61 @@ function openTextAnnotationEditor(point, screenPoint) {
 
 function closeTextAnnotationEditor() {
   state.pendingTextPoint = null;
+  state.editingTextId = null;
   els.textEditorPanel?.classList.add("hidden");
   if (els.textAnnotationInput) els.textAnnotationInput.value = "";
+  if (els.moveTextAnnotationButton) els.moveTextAnnotationButton.hidden = true;
+  if (els.deleteTextAnnotationButton) els.deleteTextAnnotationButton.hidden = true;
 }
 
 function applyPendingTextAnnotation() {
   const text = els.textAnnotationInput?.value.trim();
-  if (!state.pendingTextPoint || !text) {
+  if (!text) {
     closeTextAnnotationEditor();
     return;
   }
+
+  const style = textStyleFromControls();
+  if (state.editingTextId) {
+    const annotation = state.annotations.find((item) => item.id === state.editingTextId);
+    if (!annotation) {
+      closeTextAnnotationEditor();
+      return;
+    }
+    pushUndo();
+    annotation.text = text;
+    Object.assign(annotation, style);
+    clampShapeToImage(annotation);
+    state.selectedAnnotationId = annotation.id;
+    if (state.image) state.image.selectedAnnotationId = annotation.id;
+    closeTextAnnotationEditor();
+    updateUi();
+    draw();
+    return;
+  }
+
+  if (!state.pendingTextPoint) {
+    closeTextAnnotationEditor();
+    return;
+  }
+
   const annotation = createAnnotation(text, state.pendingTextPoint);
+  Object.assign(annotation, style);
   closeTextAnnotationEditor();
   finishAnnotation(annotation);
+}
+
+function deleteSelectedAnnotation() {
+  const annotation = selectedAnnotation();
+  if (!annotation) return;
+  pushUndo();
+  const index = state.annotations.findIndex((item) => item.id === annotation.id);
+  if (index >= 0) state.annotations.splice(index, 1);
+  state.selectedAnnotationId = null;
+  if (state.image) state.image.selectedAnnotationId = null;
+  closeTextAnnotationEditor();
+  updateUi();
+  draw();
 }
 
 function roiHasArea(roi) {
@@ -2399,6 +2559,7 @@ function selectShape(kind, shape) {
       state.image.selectedId = null;
       state.image.selectedMeasureId = null;
     }
+    openTextAnnotationEditor(null, imageToScreen({ x: shape.x, y: shape.y }), shape);
   }
   if (kind === "roi") showRoiQuickPanel();
 }
@@ -2533,8 +2694,9 @@ function clampShapeToImage(shape) {
     shape.points = shape.points.map(clampPointToImage);
   } else if (shape.type === "text") {
     const bounds = annotationBounds(shape);
-    shape.x = clamp(shape.x, 0, Math.max(0, maxX - bounds.w));
-    shape.y = clamp(shape.y, 0, Math.max(0, maxY - bounds.h));
+    const padding = bounds.padding || 0;
+    shape.x = clamp(shape.x, padding, Math.max(padding, maxX - bounds.textW - padding));
+    shape.y = clamp(shape.y, padding, Math.max(padding, maxY - bounds.textH - padding));
   }
 }
 
@@ -3607,6 +3769,15 @@ els.exportExcelButton.addEventListener("click", exportExcel);
 els.applyTextAnnotationButton?.addEventListener("click", applyPendingTextAnnotation);
 els.cancelTextAnnotationButton?.addEventListener("click", closeTextAnnotationEditor);
 els.cancelTextAnnotationSecondaryButton?.addEventListener("click", closeTextAnnotationEditor);
+els.moveTextAnnotationButton?.addEventListener("click", () => {
+  const annotation = selectedAnnotation();
+  if (!annotation) return;
+  state.activeTool = "pan";
+  closeTextAnnotationEditor();
+  updateUi();
+  draw();
+});
+els.deleteTextAnnotationButton?.addEventListener("click", deleteSelectedAnnotation);
 els.textAnnotationInput?.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     event.preventDefault();
@@ -3631,6 +3802,13 @@ els.viewer.addEventListener("pointerdown", (event) => {
   }
 
   if (state.activeTool === "text") {
+    const textHit = hitEditableShape(image);
+    if (textHit?.kind === "text") {
+      selectShape(textHit.kind, textHit.shape);
+      updateUi();
+      draw();
+      return;
+    }
     const boundedImage = clampPointToImage(image);
     openTextAnnotationEditor(boundedImage, screen);
     return;
@@ -3884,6 +4062,7 @@ window.addEventListener("keydown", (event) => {
     if (index >= 0) state.annotations.splice(index, 1);
     state.selectedAnnotationId = null;
     if (state.image) state.image.selectedAnnotationId = null;
+    closeTextAnnotationEditor();
   }
   updateUi();
   draw();
