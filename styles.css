@@ -8,23 +8,23 @@
 
 :root {
   color-scheme: light;
-  --bg: #eef1f4;
+  --bg: #f2f7f4;
   --surface: #ffffff;
-  --surface-2: #f0f3f6;
-  --ink: #14202b;
-  --muted: #8a97a3;
-  --muted-strong: #56636f;
-  --line: #e0e6ec;
-  --line-soft: #edf1f4;
-  --accent: #1c64d8;
-  --accent-ink: #154fb0;
-  --accent-soft: #eaf1fd;
-  --accent-border: #c7dbf8;
-  --navy: #10243e;
+  --surface-2: #edf4f0;
+  --ink: #13241f;
+  --muted: #84958d;
+  --muted-strong: #52645c;
+  --line: #dce7e0;
+  --line-soft: #eaf2ed;
+  --accent: #189a70;
+  --accent-ink: #12805c;
+  --accent-soft: #e6f5ed;
+  --accent-border: #bfe4d2;
+  --navy: #0e3b2c;
   --good: #15803d;
   --accent-2: #e6a23c;
   --danger: #d1495b;
-  --shadow: 0 18px 40px rgba(20, 32, 43, 0.16);
+  --shadow: 0 18px 40px rgba(14, 59, 44, 0.14);
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -58,7 +58,7 @@ select {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cfd8e0;
+  background: #cbdcd2;
   border-radius: 8px;
   border: 3px solid var(--surface);
 }
@@ -86,13 +86,13 @@ button {
 }
 
 button:hover:not(:disabled) {
-  background: #f7f9fb;
-  border-color: #cdd7e0;
+  background: #f5faf7;
+  border-color: #c6d8cd;
 }
 
 button:disabled {
   background: var(--surface);
-  color: #b3bcc6;
+  color: #adbcb3;
   cursor: not-allowed;
 }
 
@@ -132,6 +132,14 @@ button:disabled {
   display: flex;
   gap: 13px;
   min-width: 0;
+}
+
+.brand-logo {
+  display: block;
+  flex: 0 0 40px;
+  height: 40px;
+  object-fit: contain;
+  width: 40px;
 }
 
 .brand-mark {
@@ -208,7 +216,7 @@ h2 {
 }
 
 .top-divider {
-  background: #e6ebf0;
+  background: #dfeae3;
   flex: 0 0 auto;
   height: 22px;
   width: 1px;
@@ -229,8 +237,8 @@ h2 {
 }
 
 .menu-trigger.menu-open {
-  background: #f0f3f6;
-  border-color: #cdd7e0;
+  background: #edf4f0;
+  border-color: #c6d8cd;
 }
 
 .menu-pop {
@@ -284,9 +292,9 @@ h2 {
 }
 
 .menu-cta:disabled {
-  background: #e7ecf1;
+  background: #e8efe9;
   border-color: #e0e6ec;
-  color: #aab4be;
+  color: #a7b6ac;
 }
 
 .ghost-danger {
@@ -303,7 +311,7 @@ h2 {
 .primary-button {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 1px 2px rgba(28, 100, 216, 0.25);
+  box-shadow: 0 1px 2px rgba(24, 154, 112, 0.25);
   color: white;
 }
 
@@ -341,7 +349,7 @@ h2 {
 }
 
 .tool-rail .tool-button:hover:not(:disabled) {
-  background: #f3f6f9;
+  background: #eef5f1;
   border: 0;
 }
 
@@ -353,14 +361,14 @@ h2 {
 }
 
 .rail-sep {
-  background: #eaeef2;
+  background: #e5efe8;
   height: 1px;
   margin: 5px 0 0;
   width: 26px;
 }
 
 .rail-label {
-  color: #aeb9c4;
+  color: #a4b7ac;
   font-size: 8.5px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -418,8 +426,8 @@ h2 {
 }
 
 .tool-button:hover:not(:disabled) {
-  background: #f7f9fb;
-  border-color: #cdd7e0;
+  background: #f5faf7;
+  border-color: #c6d8cd;
 }
 
 .tool-button.active {
@@ -466,7 +474,7 @@ input[type="number"]:focus,
 .select-control:focus {
   border-color: var(--accent);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(28, 100, 216, 0.12);
+  box-shadow: 0 0 0 3px rgba(24, 154, 112, 0.15);
 }
 
 .check-row {
@@ -487,7 +495,7 @@ input[type="number"]:focus,
 /* ---------- segmented ---------- */
 .segmented {
   background: var(--surface-2);
-  border: 1px solid #e4e9ee;
+  border: 1px solid #dfe9e2;
   border-radius: 9px;
   display: grid;
   gap: 6px;
@@ -513,7 +521,7 @@ input[type="number"]:focus,
 
 .segment.active {
   background: var(--surface);
-  box-shadow: 0 1px 2px rgba(20, 32, 43, 0.1);
+  box-shadow: 0 1px 2px rgba(14, 59, 44, 0.1);
   color: var(--navy);
   font-weight: 700;
 }
@@ -602,7 +610,7 @@ input[type="number"]:focus,
 
 .ignored-color {
   align-items: center;
-  background: #f7f9fb;
+  background: #f5faf7;
   border: 1px solid var(--line);
   border-radius: 7px;
   display: inline-flex;
@@ -757,7 +765,7 @@ input[type="number"]:focus,
 
 .text-editor-body textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(28, 100, 216, 0.12);
+  box-shadow: 0 0 0 3px rgba(24, 154, 112, 0.15);
   outline: none;
 }
 
@@ -859,7 +867,7 @@ input[type="number"]:focus,
 .image-item {
   align-items: center;
   background: var(--surface);
-  border: 1px solid #e4e9ee;
+  border: 1px solid #dfe9e2;
   border-radius: 10px;
   cursor: pointer;
   display: grid;
@@ -873,11 +881,29 @@ input[type="number"]:focus,
 .roi-item:hover,
 .measure-item:hover,
 .image-item:hover {
-  border-color: #cdd7e0;
+  border-color: #c6d8cd;
 }
 
 .image-item {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
+}
+
+.image-remove {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 15px;
+  height: 20px;
+  line-height: 1;
+  padding: 0;
+  width: 20px;
+}
+
+.image-remove:hover:not(:disabled) {
+  background: #fdeef0;
+  border: 0;
+  color: var(--danger);
 }
 
 .roi-item.active,
@@ -1076,7 +1102,7 @@ input[type="number"]:focus,
 }
 
 .bar-track {
-  background: #eef2f5;
+  background: #ecf3ef;
   border-radius: 5px;
   height: 9px;
   overflow: hidden;

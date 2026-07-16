@@ -65,6 +65,7 @@ const els = {
   metricMean: document.querySelector("#metricMean"),
   metricMedian: document.querySelector("#metricMedian"),
   metricSd: document.querySelector("#metricSd"),
+  metricMode: document.querySelector("#metricMode"),
   metricRange: document.querySelector("#metricRange"),
 };
 
@@ -137,6 +138,7 @@ const i18n = {
     meanEi: "EI média",
     result: "Resultado",
     median: "Mediana",
+    mode: "Moda",
     sd: "DP",
     histogram: "Histograma",
     percentages: "Percentuais",
@@ -216,6 +218,7 @@ const i18n = {
     meanEi: "Mean EI",
     result: "Result",
     median: "Median",
+    mode: "Mode",
     sd: "SD",
     histogram: "Histogram",
     percentages: "Percentages",
@@ -295,6 +298,7 @@ const i18n = {
     meanEi: "EI media",
     result: "Resultado",
     median: "Mediana",
+    mode: "Moda",
     sd: "DE",
     histogram: "Histograma",
     percentages: "Porcentajes",
@@ -434,6 +438,24 @@ function setActiveImage(id, shouldFit = true) {
   state.pointer = null;
   if (state.image?.pixelSpacingMm) state.pixelSpacingMm = state.image.pixelSpacingMm;
   if (shouldFit) fitImage();
+  updateUi();
+  draw();
+}
+
+function removeImage(id) {
+  const index = state.images.findIndex((image) => image.id === id);
+  if (index < 0) return;
+  state.images.splice(index, 1);
+  if (state.activeImageId === id) {
+    const next = state.images[index] || state.images[index - 1];
+    if (next) {
+      state.activeImageId = null;
+      setActiveImage(next.id);
+      return;
+    }
+    state.activeImageId = null;
+    syncActiveImage();
+  }
   updateUi();
   draw();
 }
@@ -1307,7 +1329,7 @@ function loadDemoImage() {
   demoCtx.strokeStyle = "rgba(255,255,255,0.62)";
   demoCtx.lineWidth = 2;
   demoCtx.strokeRect(28, 28, canvas.width - 56, canvas.height - 56);
-  setImageFromCanvas(canvas, "demo-ultrassom.png");
+  setImageFromCanvas(canvas, "Demo");
 
   const roi = createRoi("circle", { cx: 382, cy: 252, r: 82 });
   roi.label = "Demo ROI";
@@ -1880,13 +1902,22 @@ function analyzeRoi(roi, image = state.image) {
   }
 
   if (!total) {
-    return { hist: [...hist], total: 0, ignored, mean: 0, median: 0, sd: 0, min: 0, max: 0, bands: [] };
+    return { hist: [...hist], total: 0, ignored, mean: 0, median: 0, mode: 0, sd: 0, min: 0, max: 0, bands: [] };
   }
 
   const mean = weighted / total;
   let varianceSum = 0;
   for (let i = 0; i < hist.length; i += 1) {
     varianceSum += (i - mean) ** 2 * hist[i];
+  }
+
+  let mode = 0;
+  let modeCount = -1;
+  for (let i = 0; i < hist.length; i += 1) {
+    if (hist[i] > modeCount) {
+      modeCount = hist[i];
+      mode = i;
+    }
   }
 
   const medianTarget = total / 2;
@@ -1906,6 +1937,7 @@ function analyzeRoi(roi, image = state.image) {
     ignored,
     mean,
     median,
+    mode,
     sd: Math.sqrt(varianceSum / total),
     min,
     max,
@@ -2881,11 +2913,12 @@ function renderImageList() {
       const meanText = Number.isFinite(mean.mean) ? ` · EI ${formatNumber(mean.mean, 3)}` : "";
       const scaleText = image.scaleSource ? ` · ${formatNumber(image.pixelSpacingMm, 4)} mm/px` : "";
       return `
-        <button class="image-item ${image.id === state.activeImageId ? "active" : ""}" data-image-id="${image.id}" type="button">
+        <div class="image-item ${image.id === state.activeImageId ? "active" : ""}" data-image-id="${image.id}" role="button" tabindex="0">
           <span class="image-name">${image.name}</span>
           <span class="image-badge">${source}</span>
+          <button class="image-remove" data-image-remove="${image.id}" type="button" title="Fechar imagem">×</button>
           <span class="image-detail">${image.width} x ${image.height}px${scaleText} · ${roiCount} ROI(s)${meanText}</span>
-        </button>
+        </div>
       `;
     })
     .join("");
@@ -3076,6 +3109,7 @@ function renderMetrics() {
   els.metricMean.textContent = analysis ? formatNumber(analysis.mean, 3) : "-";
   els.metricMedian.textContent = analysis ? formatNumber(analysis.median, 0) : "-";
   els.metricSd.textContent = analysis ? formatNumber(analysis.sd, 3) : "-";
+  els.metricMode.textContent = analysis ? formatNumber(analysis.mode, 0) : "-";
   els.metricRange.textContent = analysis ? `${analysis.min}/${analysis.max}` : "-";
 }
 
@@ -3791,6 +3825,12 @@ els.fileInput.addEventListener("change", (event) => {
 });
 
 els.imageList.addEventListener("click", (event) => {
+  const removeTrigger = event.target.closest("[data-image-remove]");
+  if (removeTrigger) {
+    event.stopPropagation();
+    removeImage(removeTrigger.dataset.imageRemove);
+    return;
+  }
   const item = event.target.closest("[data-image-id]");
   if (!item) return;
   setActiveImage(item.dataset.imageId);

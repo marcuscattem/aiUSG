@@ -4,13 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GUST</title>
-    <link rel="stylesheet" href="./styles.css?v=63d588a" />
+    <link rel="stylesheet" href="./styles.css?v=20260716-design" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true">GU</div>
+          <img class="brand-logo" src="./assets/gust-logo.png" alt="" aria-hidden="true" />
           <div class="brand-text">
             <h1>GUST</h1>
             <p id="imageMeta">Grayscale Ultrasound System Technology</p>
@@ -152,6 +152,9 @@
           <button class="tool-button" data-tool="measure-distance" type="button" title="Distância">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 19L19 5"/><path d="M3 17l2 2 2-2M17 3l2 2-2 2" stroke-width="1.5"/></svg>
           </button>
+          <button class="tool-button" data-tool="measure-angle" type="button" title="Ângulo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19h14L6 6"/><path d="M9 19a8 8 0 0 0-3-7" stroke-width="1.4"/></svg>
+          </button>
           <button class="tool-button" data-tool="measure-rect" type="button" title="Área retangular">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2.5"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
           </button>
@@ -166,9 +169,6 @@
           </button>
           <button class="tool-button" data-tool="measure-polygon" type="button" title="Área poligonal: clique nos vértices e no primeiro ponto para fechar" data-i18n-title="polygonMeasureTool">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17L8 6l10 3 1 9-9 2z"/><circle cx="5" cy="17" r="1.25" fill="currentColor" stroke="none"/><circle cx="8" cy="6" r="1.25" fill="currentColor" stroke="none"/><circle cx="18" cy="9" r="1.25" fill="currentColor" stroke="none"/></svg>
-          </button>
-          <button class="tool-button" data-tool="measure-angle" type="button" title="Ângulo">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19h14L6 6"/><path d="M9 19a8 8 0 0 0-3-7" stroke-width="1.4"/></svg>
           </button>
 
           <span class="rail-sep"></span>
@@ -270,12 +270,16 @@
                 <dd id="metricMean">-</dd>
               </div>
               <div>
+                <dt data-i18n="sd">DP</dt>
+                <dd id="metricSd">-</dd>
+              </div>
+              <div>
                 <dt data-i18n="median">Mediana</dt>
                 <dd id="metricMedian">-</dd>
               </div>
               <div>
-                <dt data-i18n="sd">DP</dt>
-                <dd id="metricSd">-</dd>
+                <dt data-i18n="mode">Moda</dt>
+                <dd id="metricMode">-</dd>
               </div>
               <div>
                 <dt>Min/Max</dt>
@@ -357,7 +361,7 @@
     </div>
 
     <script src="./vendor/jpeg-lossless-decoder-js-2.1.2.global.js"></script>
-    <script src="./app.js?v=63d588a"></script>
+    <script src="./app.js?v=20260716-design"></script>
     <script>
       // Menus suspensos da barra superior (UI apenas — independente do app.js)
       (function () {
