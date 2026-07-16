@@ -2,6 +2,7 @@ const els = {
   viewer: document.querySelector("#viewerCanvas"),
   hist: document.querySelector("#histogramCanvas"),
   languageSelect: document.querySelector("#languageSelect"),
+  cursorCoordinates: document.querySelector("#cursorCoordinates"),
   fileInput: document.querySelector("#fileInput"),
   openFileButton: document.querySelector("#openFileButton"),
   demoButton: document.querySelector("#demoButton"),
@@ -89,6 +90,8 @@ const i18n = {
     openImage: "Abrir imagem",
     undo: "Desfazer",
     selectEdit: "Selecionar, mover e editar",
+    polygonTool: "Polígono: clique nos vértices e no primeiro ponto para fechar",
+    polygonMeasureTool: "Área poligonal: clique nos vértices e no primeiro ponto para fechar",
     bandSettings: "Configurar bandas",
     customBandStep: "Segmentação",
     resetBandColors: "Restaurar cores",
@@ -159,12 +162,15 @@ const i18n = {
     circleArea: "área circular",
     ellipseArea: "área elipsoide",
     freeArea: "área livre",
+    polygonArea: "área poligonal",
     angle: "ângulo",
   },
   en: {
     openImage: "Open image",
     undo: "Undo",
     selectEdit: "Select, move, and edit",
+    polygonTool: "Polygon: click the vertices, then the first point to close",
+    polygonMeasureTool: "Polygon area: click the vertices, then the first point to close",
     bandSettings: "Band settings",
     customBandStep: "Segmentation",
     resetBandColors: "Reset colors",
@@ -235,12 +241,15 @@ const i18n = {
     circleArea: "circular area",
     ellipseArea: "ellipsoid area",
     freeArea: "free area",
+    polygonArea: "polygon area",
     angle: "angle",
   },
   es: {
     openImage: "Abrir imagen",
     undo: "Deshacer",
     selectEdit: "Seleccionar, mover y editar",
+    polygonTool: "Polígono: haga clic en los vértices y en el primer punto para cerrar",
+    polygonMeasureTool: "Área poligonal: haga clic en los vértices y en el primer punto para cerrar",
     bandSettings: "Configurar bandas",
     customBandStep: "Segmentación",
     resetBandColors: "Restaurar colores",
@@ -311,6 +320,7 @@ const i18n = {
     circleArea: "área circular",
     ellipseArea: "área elipsoide",
     freeArea: "área libre",
+    polygonArea: "área poligonal",
     angle: "ángulo",
   },
 };
@@ -344,7 +354,9 @@ const state = {
   draggingQuickPanel: null,
   view: { scale: 1, x: 0, y: 0 },
   drawing: null,
+  polygonDraft: null,
   angleDraft: null,
+  cursorImage: null,
   editing: null,
   pendingTextPoint: null,
   editingTextId: null,
@@ -414,7 +426,9 @@ function setActiveImage(id, shouldFit = true) {
   state.activeImageId = id;
   syncActiveImage();
   state.drawing = null;
+  state.polygonDraft = null;
   state.angleDraft = null;
+  state.cursorImage = null;
   closeTextAnnotationEditor();
   state.pickingIgnoreColor = false;
   state.pointer = null;
@@ -507,6 +521,7 @@ function restoreSnapshot(snapshot) {
     state.image.selectedAnnotationId = state.selectedAnnotationId;
   }
   state.drawing = null;
+  state.polygonDraft = null;
   state.editing = null;
   state.angleDraft = null;
   closeTextAnnotationEditor();
@@ -567,6 +582,18 @@ function pointerPoint(event) {
   };
 }
 
+function updateCoordinateReadout(point = state.cursorImage) {
+  if (!els.cursorCoordinates) return;
+  const inside =
+    state.image &&
+    point &&
+    point.x >= 0 &&
+    point.y >= 0 &&
+    point.x < state.image.width &&
+    point.y < state.image.height;
+  els.cursorCoordinates.textContent = inside ? `X ${Math.floor(point.x)} Y ${Math.floor(point.y)}` : "X - Y -";
+}
+
 function draw() {
   const rect = els.viewer.getBoundingClientRect();
   ctx.clearRect(0, 0, rect.width, rect.height);
@@ -591,6 +618,7 @@ function draw() {
   }
   if (state.drawing && state.drawing.roi) drawRoi(state.drawing.roi, true, true);
   if (state.drawing && state.drawing.measurement) drawMeasurement(state.drawing.measurement, true, true);
+  if (state.polygonDraft) drawPolygonDraft();
   if (state.angleDraft) drawAngleDraft();
   state.annotations.forEach((annotation) => drawAnnotation(annotation, annotation.id === state.selectedAnnotationId));
   ctx.restore();
@@ -614,7 +642,8 @@ function drawSelectionHandles(kind, shape) {
 
 function drawRoi(roi, selected = false, draft = false) {
   ctx.save();
-  ctx.lineWidth = (draft ? 1 : selected ? 3 : 2) / state.view.scale;
+  const rectangle = roi.type === "rect";
+  ctx.lineWidth = (rectangle ? (draft ? 0.65 : selected ? 1.1 : 0.8) : draft ? 1 : selected ? 2 : 1.4) / state.view.scale;
   ctx.strokeStyle = roi.color;
   ctx.fillStyle = `${roi.color}${draft ? "18" : "00"}`;
   ctx.setLineDash(draft ? [3 / state.view.scale, 3 / state.view.scale] : []);
@@ -630,7 +659,7 @@ function drawRoi(roi, selected = false, draft = false) {
     const cx = roi.x + roi.w / 2;
     const cy = roi.y + roi.h / 2;
     ctx.ellipse(cx, cy, Math.abs(roi.w / 2), Math.abs(roi.h / 2), 0, 0, Math.PI * 2);
-  } else if (roi.type === "freehand" && roi.points.length > 1) {
+  } else if (["freehand", "polygon"].includes(roi.type) && roi.points.length > 1) {
     ctx.moveTo(roi.points[0].x, roi.points[0].y);
     roi.points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
     ctx.closePath();
@@ -642,7 +671,8 @@ function drawRoi(roi, selected = false, draft = false) {
 
 function drawMeasurement(measurement, selected = false, draft = false) {
   ctx.save();
-  ctx.lineWidth = (draft ? 1 : selected ? 3 : 2) / state.view.scale;
+  const rectangle = measurement.type === "area-rect";
+  ctx.lineWidth = (rectangle ? (draft ? 0.65 : selected ? 1.1 : 0.8) : draft ? 1 : selected ? 2 : 1.4) / state.view.scale;
   ctx.strokeStyle = measurement.color;
   ctx.fillStyle = `${measurement.color}18`;
   ctx.setLineDash(draft ? [3 / state.view.scale, 3 / state.view.scale] : []);
@@ -665,7 +695,7 @@ function drawMeasurement(measurement, selected = false, draft = false) {
     const cx = measurement.x + measurement.w / 2;
     const cy = measurement.y + measurement.h / 2;
     ctx.ellipse(cx, cy, Math.abs(measurement.w / 2), Math.abs(measurement.h / 2), 0, 0, Math.PI * 2);
-  } else if (measurement.type === "area-free" && measurement.points.length > 1) {
+  } else if (["area-free", "area-polygon"].includes(measurement.type) && measurement.points.length > 1) {
     ctx.moveTo(measurement.points[0].x, measurement.points[0].y);
     measurement.points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
     ctx.closePath();
@@ -673,6 +703,37 @@ function drawMeasurement(measurement, selected = false, draft = false) {
 
   if (measurement.type.startsWith("area-")) ctx.fill();
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawPolygonDraft() {
+  const { shape, hover } = state.polygonDraft;
+  if (!shape?.points?.length) return;
+  const points = shape.points;
+  const first = points[0];
+  const color = shape.color;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = `${color}18`;
+  ctx.lineWidth = 1 / state.view.scale;
+  ctx.setLineDash([3 / state.view.scale, 3 / state.view.scale]);
+  ctx.beginPath();
+  ctx.moveTo(first.x, first.y);
+  points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
+  if (hover) ctx.lineTo(hover.x, hover.y);
+  ctx.stroke();
+
+  points.forEach((point, index) => {
+    const radius = (index === 0 ? 5 : 3.2) / state.view.scale;
+    ctx.beginPath();
+    ctx.fillStyle = index === 0 ? "#ffffff" : color;
+    ctx.strokeStyle = color;
+    ctx.setLineDash([]);
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
   ctx.restore();
 }
 
@@ -1951,7 +2012,7 @@ function boundsForRoi(roi, width, height) {
     y0 = Math.floor(Math.min(roi.y, roi.y + roi.h));
     x1 = Math.ceil(Math.max(roi.x, roi.x + roi.w));
     y1 = Math.ceil(Math.max(roi.y, roi.y + roi.h));
-  } else if (roi.type === "freehand") {
+  } else if (["freehand", "polygon"].includes(roi.type)) {
     const xs = roi.points.map((point) => point.x);
     const ys = roi.points.map((point) => point.y);
     x0 = Math.floor(Math.min(...xs));
@@ -1990,7 +2051,7 @@ function containsPixel(roi, x, y) {
     return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
   }
 
-  if (roi.type === "freehand") {
+  if (["freehand", "polygon"].includes(roi.type)) {
     return pointInPolygon(x, y, roi.points);
   }
 
@@ -2240,6 +2301,7 @@ function roiHasArea(roi) {
   if (roi.type === "circle") return roi.r >= 1;
   if (roi.type === "ellipse") return Math.abs(roi.w) >= 2 && Math.abs(roi.h) >= 2;
   if (roi.type === "freehand") return roi.points.length >= 3;
+  if (roi.type === "polygon") return roi.points.length >= 3 && polygonArea(roi.points) >= 2;
   return false;
 }
 
@@ -2250,6 +2312,7 @@ function measurementHasValue(measurement) {
   if (measurement.type === "area-circle") return measurement.r >= 1;
   if (measurement.type === "area-ellipse") return Math.abs(measurement.w) >= 2 && Math.abs(measurement.h) >= 2;
   if (measurement.type === "area-free") return measurement.points.length >= 3;
+  if (measurement.type === "area-polygon") return measurement.points.length >= 3 && polygonArea(measurement.points) >= 2;
   return false;
 }
 
@@ -2347,6 +2410,7 @@ function measurementBaseValue(measurement) {
   if (measurement.type === "area-circle") return Math.PI * measurement.r ** 2;
   if (measurement.type === "area-ellipse") return Math.PI * Math.abs(measurement.w / 2) * Math.abs(measurement.h / 2);
   if (measurement.type === "area-free") return polygonArea(measurement.points);
+  if (measurement.type === "area-polygon") return polygonArea(measurement.points);
   return 0;
 }
 
@@ -2377,17 +2441,53 @@ function measurementTypeLabel(type) {
     "area-circle": t("circleArea"),
     "area-ellipse": t("ellipseArea"),
     "area-free": t("freeArea"),
+    "area-polygon": t("polygonArea"),
     angle: t("angle"),
   };
   return labels[type] || type;
 }
 
 function isRoiTool(tool) {
-  return ["rect", "circle", "ellipse", "freehand"].includes(tool);
+  return ["rect", "circle", "ellipse", "freehand", "polygon"].includes(tool);
 }
 
 function isMeasureTool(tool) {
-  return ["measure-distance", "measure-rect", "measure-circle", "measure-ellipse", "measure-freehand", "measure-angle"].includes(tool);
+  return ["measure-distance", "measure-rect", "measure-circle", "measure-ellipse", "measure-freehand", "measure-polygon", "measure-angle"].includes(tool);
+}
+
+function isPolygonTool(tool) {
+  return tool === "polygon" || tool === "measure-polygon";
+}
+
+function handlePolygonClick(point) {
+  const kind = state.activeTool === "polygon" ? "roi" : "measurement";
+  if (!state.polygonDraft || state.polygonDraft.kind !== kind) {
+    const color = kind === "roi"
+      ? roiColors[state.rois.length % roiColors.length]
+      : measureColors[state.measurements.length % measureColors.length];
+    const shape = kind === "roi"
+      ? createRoi("polygon", { points: [point], color })
+      : createMeasurement("area-polygon", { points: [point], color });
+    state.polygonDraft = { kind, shape, hover: point };
+    draw();
+    return;
+  }
+
+  const { shape } = state.polygonDraft;
+  const closeTolerance = Math.max(10 / state.view.scale, 3);
+  if (pointDistance(point, shape.points[0]) <= closeTolerance) {
+    if (shape.points.length >= 3) {
+      state.polygonDraft = null;
+      if (kind === "roi") finishRoi(shape);
+      else finishMeasurement(shape);
+    }
+    draw();
+    return;
+  }
+
+  shape.points.push(point);
+  state.polygonDraft.hover = point;
+  draw();
 }
 
 function hasExcelExportData() {
@@ -2403,8 +2503,8 @@ function hasExcelExportData() {
 
 function isEditableShape(kind, shape) {
   if (kind === "text") return true;
-  if (kind === "roi") return ["rect", "circle", "ellipse"].includes(shape.type);
-  return ["distance", "angle", "area-rect", "area-circle", "area-ellipse", "area-free"].includes(shape.type);
+  if (kind === "roi") return ["rect", "circle", "ellipse", "polygon"].includes(shape.type);
+  return ["distance", "angle", "area-rect", "area-circle", "area-ellipse", "area-free", "area-polygon"].includes(shape.type);
 }
 
 function shapeBounds(kind, shape) {
@@ -2420,7 +2520,7 @@ function shapeBounds(kind, shape) {
   }
   if (shape.type === "distance") return boundsFromPoints([shape.p1, shape.p2]);
   if (shape.type === "angle") return boundsFromPoints([shape.p1, shape.vertex, shape.p2]);
-  if (shape.type === "area-free") return boundsFromPoints(shape.points);
+  if (["polygon", "area-free", "area-polygon"].includes(shape.type)) return boundsFromPoints(shape.points);
   if (kind === "text" || shape.type === "text") {
     const bounds = annotationBounds(shape);
     return { ...bounds, cx: (bounds.x0 + bounds.x1) / 2, cy: (bounds.y0 + bounds.y1) / 2 };
@@ -2431,6 +2531,9 @@ function shapeBounds(kind, shape) {
 function shapeHandles(kind, shape) {
   if (kind === "text") return [];
   if (shape.type === "area-free") return [];
+  if (["polygon", "area-polygon"].includes(shape.type)) {
+    return shape.points.map((point, index) => ({ name: `point-${index}`, x: point.x, y: point.y }));
+  }
   if (kind === "measurement" && shape.type === "distance") {
     return [
       { name: "p1", x: shape.p1.x, y: shape.p1.y },
@@ -2527,7 +2630,7 @@ function containsEditableShape(kind, shape, point) {
     if (!rx || !ry) return false;
     return ((point.x - cx) / rx) ** 2 + ((point.y - cy) / ry) ** 2 <= 1;
   }
-  if (shape.type === "area-free") return pointInPolygon(point.x, point.y, shape.points);
+  if (["area-free", "area-polygon"].includes(shape.type)) return pointInPolygon(point.x, point.y, shape.points);
   return false;
 }
 
@@ -2583,7 +2686,7 @@ function moveShape(shape, dx, dy) {
     movePoints(points, delta.dx, delta.dy);
     return;
   }
-  if (shape.type === "area-free") {
+  if (["polygon", "area-free", "area-polygon"].includes(shape.type)) {
     const delta = boundedDeltaForPoints(shape.points, dx, dy);
     movePoints(shape.points, delta.dx, delta.dy);
     return;
@@ -2606,6 +2709,11 @@ function moveShape(shape, dx, dy) {
 
 function resizeShape(shape, handle, startPoint, currentPoint, original) {
   const current = clampPointToImage(currentPoint);
+  if (["polygon", "area-polygon"].includes(shape.type) && handle.startsWith("point-")) {
+    const index = Number(handle.slice(6));
+    if (shape.points[index]) shape.points[index] = current;
+    return;
+  }
   if (shape.type === "distance" && (handle === "p1" || handle === "p2")) {
     shape[handle] = current;
     return;
@@ -2690,7 +2798,7 @@ function clampShapeToImage(shape) {
     shape.p1 = clampPointToImage(shape.p1);
     shape.vertex = clampPointToImage(shape.vertex);
     shape.p2 = clampPointToImage(shape.p2);
-  } else if (shape.type === "area-free") {
+  } else if (["polygon", "area-free", "area-polygon"].includes(shape.type)) {
     shape.points = shape.points.map(clampPointToImage);
   } else if (shape.type === "text") {
     const bounds = annotationBounds(shape);
@@ -2732,6 +2840,7 @@ function updateUi() {
   els.customBandStep.value = state.customBandStep || "";
   els.disableRoiQuick.checked = !state.autoRoiPopup;
   els.bandSettingsPanel.classList.toggle("hidden", !state.bandSettingsOpen);
+  updateCoordinateReadout();
 
   els.toolButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.tool === state.activeTool);
@@ -3690,9 +3799,15 @@ els.imageList.addEventListener("click", (event) => {
 els.toolButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.pickingIgnoreColor = false;
-    state.activeTool = button.dataset.tool;
+    const nextTool = button.dataset.tool;
+    if (nextTool !== state.activeTool) {
+      state.polygonDraft = null;
+      state.angleDraft = null;
+    }
+    state.activeTool = nextTool;
     if (state.activeTool !== "text") closeTextAnnotationEditor();
     updateUi();
+    draw();
   });
 });
 
@@ -3814,6 +3929,11 @@ els.viewer.addEventListener("pointerdown", (event) => {
     return;
   }
 
+  if (isPolygonTool(state.activeTool)) {
+    handlePolygonClick(clampPointToImage(image));
+    return;
+  }
+
   els.viewer.setPointerCapture(event.pointerId);
   state.pointer = { screen, image, view: { ...state.view } };
 
@@ -3916,9 +4036,18 @@ els.viewer.addEventListener("pointerdown", (event) => {
 });
 
 els.viewer.addEventListener("pointermove", (event) => {
-  if (!state.pointer || !state.image) return;
+  if (!state.image) return;
   const screen = pointerPoint(event);
   const image = screenToImage(screen);
+  state.cursorImage = image;
+  updateCoordinateReadout(image);
+
+  if (state.polygonDraft) {
+    state.polygonDraft.hover = clampPointToImage(image);
+    draw();
+  }
+
+  if (!state.pointer) return;
   state.pointer.image = image;
 
   if (state.editing) {
@@ -4016,6 +4145,15 @@ els.viewer.addEventListener("pointercancel", () => {
   draw();
 });
 
+els.viewer.addEventListener("pointerleave", () => {
+  state.cursorImage = null;
+  updateCoordinateReadout();
+  if (state.polygonDraft) {
+    state.polygonDraft.hover = null;
+    draw();
+  }
+});
+
 els.viewer.addEventListener(
   "wheel",
   (event) => {
@@ -4035,6 +4173,13 @@ els.viewer.addEventListener(
 
 window.addEventListener("keydown", (event) => {
   if (event.target && ["INPUT", "SELECT", "TEXTAREA"].includes(event.target.tagName)) return;
+  if (event.key === "Escape" && (state.polygonDraft || state.angleDraft)) {
+    event.preventDefault();
+    state.polygonDraft = null;
+    state.angleDraft = null;
+    draw();
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
     event.preventDefault();
     undoLast();
@@ -4069,6 +4214,10 @@ window.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("pointermove", (event) => {
+  if (event.target !== els.viewer) {
+    state.cursorImage = null;
+    updateCoordinateReadout();
+  }
   if (!state.draggingQuickPanel) return;
   const width = els.roiQuickPanel.offsetWidth || 260;
   const height = els.roiQuickPanel.offsetHeight || 180;

@@ -2,7 +2,7 @@
 
 Documento tecnico para apoio a redacao de artigo cientifico sobre o desenvolvimento da ferramenta GUST.
 
-Versao documentada: estado local com novo design, suporte a DICOM JPEG Lossless/JPEG Baseline, escala em JPEG convertido, medidas editaveis e anotacao de texto
+Versao documentada: estado local com novo design, suporte a DICOM JPEG Lossless/JPEG Baseline, escala em JPEG convertido, poligonos editaveis, coordenadas do cursor, medidas editaveis e anotacao de texto
 Data do documento: 2026-07-08
 Repositorio/projeto: `aiUSG`
 Aplicacao publicada: https://marcuscattem.github.io/aiUSG/
@@ -186,20 +186,21 @@ O GUST possui as seguintes ferramentas de ROI:
 - Circulo;
 - Circulo com raio fixo configuravel;
 - Elipse;
-- Forma livre/mao livre.
+- Forma livre/mao livre;
+- Poligono por vertices, fechado ao clicar novamente no primeiro ponto.
 
 Funcionalidades associadas:
 
 - selecao de ROI ja desenhada;
 - movimentacao de ROI selecionada;
-- redimensionamento de retangulos, circulos e elipses por alcas;
+- redimensionamento de retangulos, circulos, elipses e vertices de poligonos por alcas;
 - exclusao de ROI selecionada;
 - desfazer acoes de criacao, edicao e exclusao;
 - lista lateral de ROIs com tipo, pixels validos e EI media;
 - painel flutuante de ROI rapido com EI e percentuais das primeiras bandas;
 - opcao "Desativar ROI rapido" para impedir a abertura automatica da janela flutuante.
 
-As formas livres sao utilizadas para analise de ROI, mas nesta versao nao possuem edicao por alcas apos o desenho.
+As formas livres sao utilizadas para analise de ROI, mas nesta versao nao possuem edicao por alcas apos o desenho. Os poligonos podem ser movidos como conjunto e ter seus vertices reajustados individualmente.
 
 ## 10. Analise de ROI
 
@@ -280,6 +281,7 @@ O GUST possui ferramentas independentes de medida:
 - area circular;
 - area elipsoide;
 - area livre;
+- area poligonal por vertices;
 - angulo.
 
 Unidades disponiveis:
@@ -303,7 +305,7 @@ Para areas:
 - retangulo: `largura * altura`;
 - circulo: `pi * r^2`;
 - elipse: `pi * semi_eixo_x * semi_eixo_y`;
-- forma livre: formula do poligono pelo metodo do "shoelace".
+- forma livre e poligono: formula do poligono pelo metodo do "shoelace".
 
 Para angulos, o software calcula o angulo entre dois vetores definidos por tres pontos.
 
@@ -314,6 +316,7 @@ Funcionalidades de edicao das medidas:
 - redimensionamento de areas retangulares, circulares e elipsoides por alcas;
 - reajuste de pontos em medidas de distancia e angulo;
 - movimentacao de areas livres como conjunto;
+- movimentacao de areas poligonais e reajuste individual de seus vertices;
 - exclusao de medidas selecionadas;
 - desfazer acoes de criacao, edicao e exclusao.
 
@@ -322,6 +325,9 @@ O GUST tambem possui uma ferramenta de texto para inserir anotacoes sobre a imag
 ## 14. Navegacao e interacao
 
 Funcionalidades de navegacao e edicao:
+
+- mostrador permanente das coordenadas `X` e `Y` do pixel sob o cursor;
+- contornos retangulares finos para marcacao precisa sem ocultar os pixels de borda;
 
 - pan/arraste da imagem;
 - zoom com roda do mouse;
