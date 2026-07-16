@@ -213,7 +213,7 @@ Para cada ROI, o software:
 5. acumula o histograma de tons de cinza de 0 a 255;
 6. calcula estatisticas e bandas de EI.
 
-Metricas calculadas por ROI:
+Metricas calculadas por ROI (EI media e desvio padrao sao exibidos com tres casas decimais):
 
 - total de pixels analisados;
 - pixels ignorados por filtro de cor;

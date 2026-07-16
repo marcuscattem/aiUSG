@@ -626,11 +626,11 @@ function draw() {
 
 function drawSelectionHandles(kind, shape) {
   const handles = shapeHandles(kind, shape);
-  const size = Math.max(5 / state.view.scale, 2.5);
+  const size = Math.max(3.5 / state.view.scale, 1.75);
   ctx.save();
   ctx.fillStyle = "#ffffff";
   ctx.strokeStyle = "#111827";
-  ctx.lineWidth = 1.5 / state.view.scale;
+  ctx.lineWidth = 1 / state.view.scale;
   handles.forEach((handle) => {
     ctx.beginPath();
     ctx.rect(handle.x - size, handle.y - size, size * 2, size * 2);
@@ -2878,7 +2878,7 @@ function renderImageList() {
       const roiCount = image.rois.length;
       const mean = aggregateAnalysis(image.rois);
       const source = image.source === "dicom" ? "DICOM" : "IMG";
-      const meanText = Number.isFinite(mean.mean) ? ` · EI ${formatNumber(mean.mean, 1)}` : "";
+      const meanText = Number.isFinite(mean.mean) ? ` · EI ${formatNumber(mean.mean, 3)}` : "";
       const scaleText = image.scaleSource ? ` · ${formatNumber(image.pixelSpacingMm, 4)} mm/px` : "";
       return `
         <button class="image-item ${image.id === state.activeImageId ? "active" : ""}" data-image-id="${image.id}" type="button">
@@ -2895,7 +2895,7 @@ function renderPatientMetrics() {
   const aggregate = aggregateAnalysis(allRois().map(({ roi }) => roi));
   els.metricImages.textContent = state.images.length ? formatInteger(state.images.length) : "-";
   els.metricTotalRois.textContent = aggregate.roiCount ? formatInteger(aggregate.roiCount) : "-";
-  els.metricPatientMean.textContent = Number.isFinite(aggregate.mean) ? formatNumber(aggregate.mean, 2) : "-";
+  els.metricPatientMean.textContent = Number.isFinite(aggregate.mean) ? formatNumber(aggregate.mean, 3) : "-";
   els.metricPatientPixels.textContent = aggregate.total ? formatInteger(aggregate.total) : "-";
 }
 
@@ -2959,7 +2959,7 @@ function renderRoiQuickPanel() {
   els.roiQuickPanel.classList.remove("hidden");
   els.roiQuickContent.innerHTML = `
     <div class="quick-metric"><span>ROI</span><strong>${roi.label}</strong></div>
-    <div class="quick-metric"><span>${t("meanEi")}</span><strong>${formatNumber(roi.analysis.mean, 2)}</strong></div>
+    <div class="quick-metric"><span>${t("meanEi")}</span><strong>${formatNumber(roi.analysis.mean, 3)}</strong></div>
     ${summary
       .map(
         (item) => `
@@ -3033,7 +3033,7 @@ function renderRoiList() {
   els.roiList.innerHTML = state.rois
     .map((roi) => {
       const pixels = roi.analysis ? formatInteger(roi.analysis.total) : "-";
-      const mean = roi.analysis ? formatNumber(roi.analysis.mean, 1) : "-";
+      const mean = roi.analysis ? formatNumber(roi.analysis.mean, 3) : "-";
       const ignored = roi.analysis?.ignored ? ` · ${formatInteger(roi.analysis.ignored)} ${t("ignoredShort")}` : "";
       return `
         <button class="roi-item ${roi.id === state.selectedId ? "active" : ""}" data-roi-id="${roi.id}" type="button">
@@ -3073,9 +3073,9 @@ function renderMetrics() {
   const analysis = roi?.analysis;
   els.metricRoi.textContent = roi ? roi.label : "-";
   els.metricPixels.textContent = analysis ? formatInteger(analysis.total) : "-";
-  els.metricMean.textContent = analysis ? formatNumber(analysis.mean, 2) : "-";
+  els.metricMean.textContent = analysis ? formatNumber(analysis.mean, 3) : "-";
   els.metricMedian.textContent = analysis ? formatNumber(analysis.median, 0) : "-";
-  els.metricSd.textContent = analysis ? formatNumber(analysis.sd, 2) : "-";
+  els.metricSd.textContent = analysis ? formatNumber(analysis.sd, 3) : "-";
   els.metricRange.textContent = analysis ? `${analysis.min}/${analysis.max}` : "-";
 }
 
@@ -3196,9 +3196,9 @@ function exportCsv() {
         roi.type,
         roi.analysis.total,
         roi.analysis.ignored || 0,
-        roi.analysis.mean.toFixed(4),
+        roi.analysis.mean.toFixed(3),
         roi.analysis.median,
-        roi.analysis.sd.toFixed(4),
+        roi.analysis.sd.toFixed(3),
         roi.analysis.min,
         roi.analysis.max,
         band.label,
@@ -3434,9 +3434,9 @@ function buildRoiRows() {
       roi.type,
       roi.analysis.total,
       roi.analysis.ignored || 0,
-      roundForSheet(roi.analysis.mean, 4),
+      roundForSheet(roi.analysis.mean, 3),
       roi.analysis.median,
-      roundForSheet(roi.analysis.sd, 4),
+      roundForSheet(roi.analysis.sd, 3),
       roi.analysis.min,
       roi.analysis.max,
     ]);
